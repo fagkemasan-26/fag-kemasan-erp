@@ -1,0 +1,38 @@
+PAKET UI ERP ETERNAL UNTUK ANTIGRAVITY
+
+1. Ekstrak ZIP. Di Mac tekan Command+Shift+. agar folder .agents terlihat.
+2. Salin folder .agents ke folder utama proyek ERP (tempat package.json).
+   Jika .agents sudah ada, gabungkan folder; jangan hapus skill lama.
+3. Buka proyek di Antigravity dan minta agen membaca tiga SKILL.md di .agents/skills.
+
+PROMPT SIAP TEMPEL
+Gunakan skill lokal di .agents/skills. Frontend Design untuk desain layar;
+React Best Practices untuk implementasi React/Next.js; Web Design Guidelines
+untuk review. Baca panduan dan rules yang relevan saja. Jangan muat semua
+referensi sekaligus. Pertahankan stack proyek.
+
+Desain ERP premium: dokumen putih penuh lebar, aksen hijau tua, tipografi
+rapi, tabel mudah dibaca, border halus, status jelas. Minimalkan gradient,
+kartu berulang, dan animasi dekoratif. Pakai ulang design tokens dan komponen.
+Mulai satu layar Order Masuk. Verifikasi preview lokal dan alur utama.
+Jangan mengubah aturan bisnis atau deploy otomatis.
+
+ISI
+- frontend-design: file upstream Anthropic.
+- react-best-practices: file upstream Vercel termasuk rules.
+- web-design-guidelines: file upstream Vercel. Saat dijalankan skill ini
+  meminta mengambil panduan terbaru melalui internet.
+
+OPSIONAL UI UX PRO MAX
+Tidak diaktifkan dalam paket inti untuk mengurangi tumpang tindih desain.
+Arsip sumber GitHub asli disertakan di OPTIONAL/ui-ux-pro-max-source.zip.
+Untuk pemasangan resmi, minta Antigravity mengikuti README sumber tersebut.
+Arsip sumber bukan folder skill siap pasang. Membutuhkan Python 3 untuk search.
+
+SUMBER
+https://github.com/anthropics/skills/tree/main/skills/frontend-design
+https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
+https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines
+https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+Diunduh dari main pada 5 November 2026 WIB. Tidak dipasang pada komputer Anda.
+File skill inti tidak diubah. Token aktual bergantung agen/model dan tugas.

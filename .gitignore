@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js Build Output
+.next/
+out/
+build/
+dist/
+
+# Environment Variables
+.env*.local
+.env
+
+# Testing & Scratch Artifacts
+*.png
+*.jpg
+*.jpeg
+scratch/
+scripts/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Antigravity Brain / System Generated
+.system_generated/

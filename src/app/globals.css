@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#F5F6F8] text-slate-900 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ======================================================== */
+/* APPLE DESIGN SYSTEM UTILITIES & KEYFRAMES                */
+/* ======================================================== */
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.5) 0%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(226, 232, 240, 0.5) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Apple-style Tactile Button Classes */
+.apple-btn {
+  @apply transition-all duration-200 ease-out active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-md cursor-pointer select-none inline-flex items-center justify-center;
+}
+
+.apple-btn-primary {
+  @apply bg-[#0A3828] hover:bg-[#07291D] text-white font-bold rounded-xl shadow-sm active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200 ease-out cursor-pointer inline-flex items-center justify-center;
+}
+
+.apple-btn-secondary {
+  @apply bg-white hover:bg-slate-50 text-slate-700 font-semibold border border-slate-200 rounded-xl shadow-sm active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-200 ease-out cursor-pointer inline-flex items-center justify-center;
+}
+
+.apple-btn-subtle {
+  @apply transition-all duration-150 ease-out active:scale-[0.98] hover:bg-slate-100 rounded-lg cursor-pointer;
+}
+
+/* Apple-style Card with Floating Hover Physics */
+.apple-card {
+  @apply bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 ease-out;
+}
+
+.apple-card-interactive {
+  @apply bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-emerald-600/30 transition-all duration-300 ease-out cursor-pointer;
+}
+
+/* Apple Frosted Glass Surface */
+.apple-glass {
+  @apply bg-white/80 backdrop-blur-xl border border-white/50 shadow-sm;
+}
+
+/* Custom Apple Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
+}
+
+/* Print styles untuk Dokumen ERP Resmi (PO, SQ, DO, SI) & Ekspor PDF */
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+}
