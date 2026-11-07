@@ -15,6 +15,7 @@ import {
   RefreshCw,
   CheckCircle2,
   Trash2,
+  Pencil,
   ExternalLink,
   ChevronRight,
   Tag,
@@ -149,6 +150,33 @@ export default function InventoryModule({
 
   // Modal State
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) return;
+    try {
+      setIsDeleting(true);
+      const { error } = await supabase.from('produk').delete().eq('id', productToDelete.id);
+      if (error) {
+        if (error.code === '23503') {
+          alert(`Kemasan "${productToDelete.nama}" tidak dapat dihapus karena sudah memiliki riwayat transaksi.`);
+        } else {
+          alert('Gagal menghapus kemasan: ' + error.message);
+        }
+        return;
+      }
+      setIsDeleteModalOpen(false);
+      setProductToDelete(null);
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      alert('Terjadi kesalahan saat menghapus: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Stock Mutation Data
   const [mutationHistory, setMutationHistory] = useState([]);
@@ -745,7 +773,7 @@ export default function InventoryModule({
                         {cols.hargaBeli !== false && <th className="py-3 px-3.5 text-right border-r border-slate-200/60">Harga Beli Pokok</th>}
                         {cols.hargaJual !== false && <th className="py-3 px-3.5 text-right border-r border-slate-200/60">Harga Jual</th>}
                         {cols.totalValuasi !== false && <th className="py-3 px-3.5 text-right border-r border-slate-200/60">Valuasi Total (Rp)</th>}
-                        {cols.aksiLanjutan && <th className="py-3 px-3.5 text-center">Aksi Cepat</th>}
+                        <th className="py-3 px-3.5 text-center">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -826,32 +854,32 @@ export default function InventoryModule({
                                   Rp {totalVal.toLocaleString('id-ID')}
                                 </td>
                               )}
-                              {cols.aksiLanjutan && (
-                                <td className={`${py} text-center`} onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center justify-center space-x-1.5">
-                                    <button
-                                      onClick={() => {
-                                        setSelectedProductForCard(p.id);
-                                        setActiveSubTab('mutation');
-                                      }}
-                                      className="apple-btn px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-emerald-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 shadow-2xs"
-                                      title="Lihat Riwayat Mutasi Kartu Stok"
-                                    >
-                                      Kartu Stok
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        initNewAdjustment(p);
-                                        setActiveSubTab('adjustment');
-                                      }}
-                                      className="apple-btn px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-900 bg-emerald-50/80 hover:bg-emerald-100 rounded-lg border border-emerald-200/80 shadow-2xs"
-                                      title="Sesuaikan Stok (Opname)"
-                                    >
-                                      Opname
-                                    </button>
-                                  </div>
-                                </td>
-                              )}
+                              <td className={`${py} text-center`} onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center space-x-1.5">
+                                  <button
+                                    onClick={() => {
+                                      setEditingProduct(p);
+                                      setIsQuickAddOpen(true);
+                                    }}
+                                    className="apple-btn px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100/80 rounded-lg border border-emerald-200/80 shadow-2xs flex items-center space-x-1 transition"
+                                    title="Ubah data kemasan ini"
+                                  >
+                                    <Pencil className="w-3 h-3 text-emerald-700" />
+                                    <span>Ubah</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setProductToDelete(p);
+                                      setIsDeleteModalOpen(true);
+                                    }}
+                                    className="apple-btn px-2.5 py-1 text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100/80 rounded-lg border border-rose-200 shadow-2xs flex items-center space-x-1 transition"
+                                    title="Hapus kemasan ini"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-rose-600" />
+                                    <span>Hapus</span>
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                           );
                         })
@@ -1365,15 +1393,66 @@ export default function InventoryModule({
         </div>
       )}
 
-      {/* Quick Add Product Modal with 00000 format */}
+      {/* Quick Add / Edit Product Modal with 00000 format */}
       <QuickAddProductModal
         isOpen={isQuickAddOpen}
-        onClose={() => setIsQuickAddOpen(false)}
+        editingProduct={editingProduct}
+        existingProducts={products}
+        categories={categories}
+        onClose={() => {
+          setIsQuickAddOpen(false);
+          setEditingProduct(null);
+        }}
         onProductCreated={async () => {
           if (onRefresh) await onRefresh();
           setIsQuickAddOpen(false);
+          setEditingProduct(null);
+        }}
+        onProductUpdated={async () => {
+          if (onRefresh) await onRefresh();
+          setIsQuickAddOpen(false);
+          setEditingProduct(null);
         }}
       />
+
+      {/* Modal Konfirmasi Hapus Produk */}
+      {isDeleteModalOpen && productToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 space-y-4 text-center border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900">Hapus Kemasan Ini?</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Apakah Anda yakin ingin menghapus master <strong className="text-slate-800">{productToDelete.nama}</strong> ({productToDelete.kode_sku})?
+              </p>
+            </div>
+            <div className="flex space-x-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setProductToDelete(null);
+                }}
+                className="flex-1 py-2 border border-slate-300 rounded-xl font-bold text-xs text-slate-700 hover:bg-slate-100 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteProduct}
+                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow transition flex items-center justify-center space-x-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Menghapus...' : 'Hapus Sekarang'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table Configuration Modal for Persediaan (Items, Mutation, Opname) */}
       {activeConfigModal && (

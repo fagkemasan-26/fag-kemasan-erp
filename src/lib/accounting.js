@@ -134,6 +134,8 @@ export async function resetAllTransactions() {
 
     await supabase.from('penjualan_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('penjualan').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('pesanan_pembelian_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('pesanan_pembelian').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('pembelian_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('pembelian').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
@@ -142,8 +144,19 @@ export async function resetAllTransactions() {
     await supabase.from('riwayat_stok').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('kas_transaksi').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // Reset sequence counter dokumen
+    // Reset sequence counter dokumen kembali ke 0001
     await supabase.from('nomor_dokumen_counter').delete().neq('prefix', 'DUMMY');
+
+    // Reset saldo akun buku besar (COA) ke Rp 0
+    await supabase.from('akun').update({
+      saldo_awal: 0,
+      total_debit: 0,
+      total_kredit: 0,
+      saldo_saat_ini: 0
+    }).neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // Reset stok produk ke 0 pcs (siap untuk stok opname fisik)
+    await supabase.from('produk').update({ stok: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
 
     return { success: true };
   } catch (err) {

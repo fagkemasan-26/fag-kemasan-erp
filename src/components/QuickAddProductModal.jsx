@@ -43,6 +43,8 @@ export default function QuickAddProductModal({
   categories = [],
   existingProducts = [],
   onProductCreated,
+  onProductUpdated,
+  editingProduct = null,
 }) {
   const [formData, setFormData] = useState({
     nama: '',
@@ -57,19 +59,37 @@ export default function QuickAddProductModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [isAutoCode, setIsAutoCode] = useState(true);
 
-  // Setiap modal dibuka, hitung dan set kode otomatis format 00000
+  // Setiap modal dibuka, hitung dan set kode otomatis format 00000 atau isi data yang diedit
   useEffect(() => {
     if (isOpen) {
-      const autoCode = getNextProductCode(existingProducts);
-      setFormData((prev) => ({
-        ...prev,
-        kode_sku: autoCode,
-        kategori_id: prev.kategori_id || categories[0]?.id || '',
-      }));
-      setIsAutoCode(true);
+      if (editingProduct) {
+        setFormData({
+          nama: editingProduct.nama || '',
+          kode_sku: editingProduct.kode_sku || '',
+          kategori_id: editingProduct.kategori_id || categories[0]?.id || '',
+          satuan: editingProduct.satuan || 'Pcs',
+          harga_beli: editingProduct.harga_beli != null ? String(editingProduct.harga_beli) : '',
+          harga_jual: editingProduct.harga_jual != null ? String(editingProduct.harga_jual) : '',
+          stok: editingProduct.stok != null ? String(editingProduct.stok) : '0',
+        });
+        setIsAutoCode(false);
+      } else {
+        const autoCode = getNextProductCode(existingProducts);
+        setFormData((prev) => ({
+          ...prev,
+          nama: '',
+          kode_sku: autoCode,
+          kategori_id: categories[0]?.id || '',
+          satuan: 'Pcs',
+          harga_beli: '',
+          harga_jual: '',
+          stok: '0',
+        }));
+        setIsAutoCode(true);
+      }
       setErrorMsg('');
     }
-  }, [isOpen, existingProducts, categories]);
+  }, [isOpen, editingProduct, existingProducts, categories]);
 
   if (!isOpen) return null;
 
@@ -96,44 +116,74 @@ export default function QuickAddProductModal({
         finalSku = getNextProductCode(existingProducts);
       }
 
-      const { data, error } = await supabase
-        .from('produk')
-        .insert({
-          nama: formData.nama.trim(),
-          kode_sku: finalSku,
-          kategori_id: formData.kategori_id || null,
-          satuan: formData.satuan || 'Pcs',
-          harga_beli: Number(formData.harga_beli || 0),
-          harga_jual: Number(formData.harga_jual || 0),
-          stok: Number(formData.stok || 0),
-        })
-        .select('*, kategori:kategori_id(nama)')
-        .single();
+      if (editingProduct) {
+        // Mode Update
+        const { data, error } = await supabase
+          .from('produk')
+          .update({
+            nama: formData.nama.trim(),
+            kode_sku: finalSku,
+            kategori_id: formData.kategori_id || null,
+            satuan: formData.satuan || 'Pcs',
+            harga_beli: Number(formData.harga_beli || 0),
+            harga_jual: Number(formData.harga_jual || 0),
+            stok: Number(formData.stok || 0),
+          })
+          .eq('id', editingProduct.id)
+          .select('*, kategori:kategori_id(nama)')
+          .single();
 
-      if (error) {
-        if (error.code === '23505') {
-          throw new Error(`Kode barang "${finalSku}" sudah digunakan. Gunakan kode lain.`);
+        if (error) {
+          if (error.code === '23505') {
+            throw new Error(`Kode barang "${finalSku}" sudah digunakan oleh barang lain.`);
+          }
+          throw error;
         }
-        throw error;
+
+        if (onProductUpdated) onProductUpdated(data);
+        else if (onProductCreated) onProductCreated(data);
+      } else {
+        // Mode Tambah Baru
+        const { data, error } = await supabase
+          .from('produk')
+          .insert({
+            nama: formData.nama.trim(),
+            kode_sku: finalSku,
+            kategori_id: formData.kategori_id || null,
+            satuan: formData.satuan || 'Pcs',
+            harga_beli: Number(formData.harga_beli || 0),
+            harga_jual: Number(formData.harga_jual || 0),
+            stok: Number(formData.stok || 0),
+          })
+          .select('*, kategori:kategori_id(nama)')
+          .single();
+
+        if (error) {
+          if (error.code === '23505') {
+            throw new Error(`Kode barang "${finalSku}" sudah digunakan. Gunakan kode lain.`);
+          }
+          throw error;
+        }
+
+        if (onProductCreated) {
+          onProductCreated(data);
+        }
       }
 
-      if (onProductCreated) {
-        onProductCreated(data);
-      }
       onClose();
 
       // Reset form
       setFormData({
         nama: '',
-        kode_sku: getNextProductCode([...existingProducts, data]),
+        kode_sku: getNextProductCode(existingProducts),
         kategori_id: categories[0]?.id || '',
         satuan: 'Pcs',
         harga_beli: '',
         harga_jual: '',
-        stok: '100',
+        stok: '0',
       });
     } catch (err) {
-      console.error('Error create product:', err);
+      console.error('Error save product:', err);
       setErrorMsg(err.message || 'Gagal menyimpan barang kemasan ke Supabase.');
     } finally {
       setSubmitting(false);
@@ -149,8 +199,12 @@ export default function QuickAddProductModal({
               <Package className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm tracking-wide">Tambah Barang Kemasan Baru</h3>
-              <p className="text-[10px] text-emerald-200">FAG Kemasan - Master Produk</p>
+              <h3 className="font-extrabold text-sm tracking-wide">
+                {editingProduct ? 'Ubah Data Kemasan (Edit Master)' : 'Tambah Barang Kemasan Baru'}
+              </h3>
+              <p className="text-[10px] text-emerald-200">
+                {editingProduct ? `Edit SKU: ${formData.kode_sku}` : 'FAG Kemasan - Master Produk'}
+              </p>
             </div>
           </div>
           <button
@@ -309,7 +363,7 @@ export default function QuickAddProductModal({
               className="flex-1 py-2 bg-[#0A3828] hover:bg-[#07291D] text-white rounded-xl font-bold flex items-center justify-center space-x-1.5 shadow transition"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>{submitting ? 'Menyimpan...' : 'Simpan Produk'}</span>
+              <span>{submitting ? 'Menyimpan...' : editingProduct ? 'Simpan Perubahan' : 'Simpan Produk'}</span>
             </button>
           </div>
         </form>
