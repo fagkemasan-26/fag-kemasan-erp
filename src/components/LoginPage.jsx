@@ -209,12 +209,19 @@ export default function LoginPage({ onLoginSuccess }) {
         <div className="w-full bg-white rounded-3xl shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85),0_0_40px_rgba(16,185,129,0.18)] border border-emerald-500/30 overflow-hidden animate-in zoom-in-95 duration-200 backdrop-blur-sm">
           {/* Card Header (Deep Forest Emerald Luxury) */}
           <div className="bg-[#07291D] p-6 text-white text-center border-b border-emerald-900/60 relative">
-            <div className="w-16 h-16 bg-white rounded-2xl p-1 mx-auto shadow-lg flex items-center justify-center mb-3.5 border-2 border-emerald-500/40">
+            <div className="w-16 h-16 bg-white rounded-2xl p-1 mx-auto shadow-lg flex items-center justify-center mb-3.5 border-2 border-emerald-500/40 overflow-hidden">
               <img
                 src="/logo-fag.png"
                 alt="FAG Kemasan Logo"
                 className="w-full h-full object-contain rounded-xl"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                }}
               />
+              <div style={{ display: 'none' }} className="w-full h-full rounded-xl bg-emerald-950 text-emerald-400 font-black text-sm items-center justify-center font-mono">
+                FAG
+              </div>
             </div>
 
             <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider text-emerald-100">

@@ -17,6 +17,7 @@ dist/
 *.png
 *.jpg
 *.jpeg
+!public/**
 scratch/
 scripts/
 

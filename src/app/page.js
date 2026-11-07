@@ -2317,8 +2317,19 @@ export default function EternalPackagingERPWorkspace() {
   if (isAuthLoading) {
     return (
       <div className="min-h-screen bg-[#07291D] flex flex-col items-center justify-center text-white space-y-3 select-none">
-        <div className="w-16 h-16 bg-white rounded-2xl p-1 shadow-2xl flex items-center justify-center animate-pulse border-2 border-emerald-500/40">
-          <img src="/logo-fag.png" alt="FAG Kemasan" className="w-full h-full object-contain rounded-xl" />
+        <div className="w-16 h-16 bg-white rounded-2xl p-1 shadow-2xl flex items-center justify-center animate-pulse border-2 border-emerald-500/40 overflow-hidden">
+          <img
+            src="/logo-fag.png"
+            alt="FAG Kemasan"
+            className="w-full h-full object-contain rounded-xl"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+            }}
+          />
+          <div style={{ display: 'none' }} className="w-full h-full rounded-xl bg-[#07291D] text-emerald-400 font-black text-sm items-center justify-center font-mono">
+            FAG
+          </div>
         </div>
         <p className="text-xs font-bold tracking-wider text-emerald-300 font-mono animate-pulse">
           MEMUAT SISTEM FAG KEMASAN...
@@ -2353,10 +2364,21 @@ export default function EternalPackagingERPWorkspace() {
       <aside className="w-[58px] bg-[#07291D] text-slate-200 flex flex-col items-center py-3.5 border-r border-[#041F16] z-30 flex-shrink-0 shadow-lg">
         <div
           onClick={() => openTab('so', 'Pesanan Penjualan (PO)', 'so', 'list')}
-          className="w-10 h-10 rounded-2xl bg-white p-0.5 shadow-md cursor-pointer apple-btn hover:scale-105 active:scale-95 transition-all duration-200 mb-5 flex items-center justify-center border border-emerald-400/40"
-          title="FAG Kemasan - Sistem Kasir &amp; Pencatatan"
+          className="w-10 h-10 rounded-2xl bg-white p-0.5 shadow-md cursor-pointer apple-btn hover:scale-105 active:scale-95 transition-all duration-200 mb-5 flex items-center justify-center border border-emerald-400/40 overflow-hidden"
+          title="FAG Kemasan - Sistem Kasir & Pencatatan"
         >
-          <img src="/logo-fag.png" alt="Logo FAG" className="w-full h-full object-contain rounded-xl" />
+          <img
+            src="/logo-fag.png"
+            alt="Logo FAG"
+            className="w-full h-full object-contain rounded-xl"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+            }}
+          />
+          <div style={{ display: 'none' }} className="w-full h-full rounded-xl bg-[#07291D] text-emerald-400 font-black text-[11px] items-center justify-center font-mono">
+            FK
+          </div>
         </div>
 
         <nav className="flex-1 space-y-2 w-full px-1.5">
