@@ -472,9 +472,11 @@ export default function EternalPackagingERPWorkspace() {
     return totalOmzetPenjualan > 0 ? ((totalLabaBersih / totalOmzetPenjualan) * 100).toFixed(1) : '0.0';
   }, [totalLabaBersih, totalOmzetPenjualan]);
 
-  // Master Satuan Kemasan (Supabase Live)
+  // Master Satuan & Kategori Kemasan (Supabase Live)
   const [satuanList, setSatuanList] = useState([]);
   const [newSatuanInput, setNewSatuanInput] = useState('');
+  const [newKategoriInput, setNewKategoriInput] = useState('');
+  const [newKategoriDescInput, setNewKategoriDescInput] = useState('');
 
   // Down Payment (Uang Muka) Modal State (Accurate Online Alur)
   const [isDpModalOpen, setIsDpModalOpen] = useState(false);
@@ -1641,6 +1643,63 @@ export default function EternalPackagingERPWorkspace() {
     } catch (err) {
       console.error('Gagal hapus satuan:', err);
       showToast('Gagal hapus satuan: ' + err.message, 'error');
+    }
+  };
+
+  // ========================================================
+  // MASTER KATEGORI KEMASAN (SUPABASE LIVE MANAGEMENT)
+  // ========================================================
+  const handleAddKategori = async (namaKategori, deskripsi = '') => {
+    if (!namaKategori || !namaKategori.trim()) {
+      showToast('Nama kategori wajib diisi!', 'warning', 'Validasi');
+      return;
+    }
+    const clean = namaKategori.trim();
+    try {
+      const { data, error } = await supabase
+        .from('kategori')
+        .insert({ nama: clean, keterangan: deskripsi?.trim() || null })
+        .select()
+        .single();
+      if (error) {
+        if (error.code === '23505') {
+          showToast(`Kategori "${clean}" sudah terdaftar sebelumnya.`, 'info', 'Kategori Ada');
+          return;
+        }
+        throw error;
+      }
+      setCategories((prev) => [...prev, data].sort((a, b) => a.nama.localeCompare(b.nama)));
+      showToast(`Kategori "${clean}" berhasil ditambahkan ke database!`, 'success', 'Kategori Baru');
+      setNewKategoriInput('');
+      setNewKategoriDescInput('');
+    } catch (err) {
+      console.error('Gagal tambah kategori:', err);
+      showToast('Gagal tambah kategori: ' + err.message, 'error', 'Error');
+    }
+  };
+
+  const handleDeleteKategori = async (kategoriId, namaKategori) => {
+    try {
+      // Periksa apakah kategori ini sedang digunakan oleh produk kemasan
+      const usedInProducts = (products || []).filter(
+        (p) => p.kategori_id === kategoriId || p.kategori?.nama === namaKategori
+      );
+      if (usedInProducts.length > 0) {
+        showToast(
+          `Kategori "${namaKategori}" masih digunakan oleh ${usedInProducts.length} barang kemasan. Silakan ubah kategori produk terkait sebelum menghapus.`,
+          'warning',
+          'Tidak Dapat Dihapus'
+        );
+        return;
+      }
+
+      const { error } = await supabase.from('kategori').delete().eq('id', kategoriId);
+      if (error) throw error;
+      setCategories((prev) => prev.filter((c) => c.id !== kategoriId));
+      showToast(`Kategori "${namaKategori}" berhasil dihapus dari database.`, 'info', 'Kategori Dihapus');
+    } catch (err) {
+      console.error('Gagal hapus kategori:', err);
+      showToast('Gagal hapus kategori: ' + err.message, 'error', 'Error');
     }
   };
 
@@ -6036,10 +6095,10 @@ export default function EternalPackagingERPWorkspace() {
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
                   >
-                    <Package className="w-3.5 h-3.5" />
-                    <span>4. Master Satuan</span>
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>4. Master Kategori &amp; Satuan</span>
                     <span className="ml-1 px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">
-                      {satuanList.length}
+                      {categories.length} Kat / {satuanList.length} Sat
                     </span>
                   </button>
                   <button
@@ -6401,73 +6460,193 @@ export default function EternalPackagingERPWorkspace() {
                 )}
 
 
-                {/* SUB-MODUL 4: MASTER SATUAN KEMASAN */}
+                {/* SUB-MODUL 4: MASTER KATEGORI & SATUAN KEMASAN */}
                 {settingsSubTab === 'satuan' && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="space-y-6 animate-in fade-in duration-150">
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                       <div>
                         <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-950 flex items-center">
-                          <Package className="w-4 h-4 mr-1.5 text-emerald-800" />
-                          Kelola Master Satuan Kemasan (Dropdown Supabase Live)
+                          <Layers className="w-4 h-4 mr-1.5 text-emerald-800" />
+                          Master Kategori &amp; Satuan Kemasan (Supabase Real-Time)
                         </h3>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          Tabel Supabase: <code className="font-bold text-emerald-900">satuan</code> ({satuanList.length} Satuan Aktif)
+                          Kelola kelompok kategori produk dan unit satuan kemasan yang digunakan di master produk, POS, dan formulir transaksi (PO, SQ, DO, SI).
                         </p>
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-slate-500">
-                      Daftar satuan ini langsung terhubung ke dropdown rincian barang di seluruh formulir penjualan (PO, SQ, DO, SI). Anda dapat menambah atau menghapus satuan sesuai kebutuhan bisnis kemasan.
-                    </p>
-
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                      {/* Add Satuan Input */}
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          placeholder="Ketik nama satuan kemasan baru (contoh: Pouch, Roll, Rim, Bal, Dus)..."
-                          value={newSatuanInput}
-                          onChange={(e) => setNewSatuanInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddSatuan(newSatuanInput);
-                            }
-                          }}
-                          className="flex-1 max-w-md px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-700"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleAddSatuan(newSatuanInput)}
-                          className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1 transition"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>+ Tambah Satuan</span>
-                        </button>
+                    {/* BAGIAN 1: MASTER KATEGORI KEMASAN */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                      <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                            <Tag className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
+                              1. Master Kategori Kemasan
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              Tabel Supabase: <code className="font-bold text-emerald-900 font-mono">kategori</code> ({categories.length} Kategori Terdaftar)
+                            </p>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Satuan List Chips */}
-                      <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
-                        {satuanList.map((sat) => (
-                          <div
-                            key={sat.id}
-                            className="flex items-center space-x-1.5 px-3 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 shadow-2xs hover:border-emerald-600 transition"
-                          >
-                            <Package className="w-3 h-3 text-emerald-700" />
-                            <span>{sat.nama}</span>
+                      <div className="p-4 space-y-4">
+                        {/* Form Tambah Kategori */}
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleAddKategori(newKategoriInput, newKategoriDescInput);
+                          }}
+                          className="bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200/80 space-y-2.5"
+                        >
+                          <span className="text-[11px] font-bold text-emerald-950 block">
+                            + Tambah Kategori Kemasan Baru
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                            <input
+                              type="text"
+                              required
+                              placeholder="Nama Kategori (contoh: Paper Cup & Bag, Box Dus, Plastik Kresek)..."
+                              value={newKategoriInput}
+                              onChange={(e) => setNewKategoriInput(e.target.value)}
+                              className="sm:col-span-6 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-700 font-medium"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Keterangan singkat (opsional)..."
+                              value={newKategoriDescInput}
+                              onChange={(e) => setNewKategoriDescInput(e.target.value)}
+                              className="sm:col-span-4 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-700 text-slate-600"
+                            />
                             <button
-                              type="button"
-                              onClick={() => handleDeleteSatuan(sat.id, sat.nama)}
-                              className="p-0.5 text-slate-400 hover:text-rose-600 rounded transition ml-1"
-                              title={`Hapus satuan ${sat.nama}`}
+                              type="submit"
+                              className="sm:col-span-2 px-3 py-1.5 bg-[#0A3828] hover:bg-[#07291D] text-white rounded-lg text-xs font-bold shadow-xs flex items-center justify-center space-x-1 transition"
                             >
-                              <X className="w-3 h-3" />
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Simpan</span>
                             </button>
                           </div>
-                        ))}
-                        {satuanList.length === 0 && (
-                          <span className="text-xs text-slate-400 italic">Memuat daftar satuan dari Supabase...</span>
-                        )}
+                        </form>
+
+                        {/* Daftar Kategori Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                          {categories.map((cat) => {
+                            const count = (products || []).filter(
+                              (p) => p.kategori_id === cat.id || p.kategori?.nama === cat.nama
+                            ).length;
+                            return (
+                              <div
+                                key={cat.id}
+                                className="p-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-xs transition flex flex-col justify-between space-y-2 group"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="space-y-0.5">
+                                    <h5 className="font-bold text-xs text-slate-900 group-hover:text-emerald-900 transition">
+                                      {cat.nama}
+                                    </h5>
+                                    {cat.keterangan && (
+                                      <p className="text-[10px] text-slate-500 line-clamp-1">
+                                        {cat.keterangan}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteKategori(cat.id, cat.nama)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                    title={`Hapus kategori ${cat.nama}`}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px] text-slate-500">
+                                  <span>{count} SKU barang aktif</span>
+                                  <span className="font-mono text-emerald-800 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
+                                    Aktif
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {categories.length === 0 && (
+                            <div className="col-span-full p-4 text-center text-xs text-slate-400 italic bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                              Belum ada kategori. Silakan tambahkan kategori kemasan pertama di atas.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BAGIAN 2: MASTER SATUAN KEMASAN */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                      <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                            <Package className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
+                              2. Master Satuan Kemasan
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              Tabel Supabase: <code className="font-bold text-emerald-900 font-mono">satuan</code> ({satuanList.length} Satuan Terdaftar)
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 space-y-3">
+                        {/* Add Satuan Input */}
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            placeholder="Ketik nama satuan baru (contoh: Pouch, Roll, Rim, Bal, Dus)..."
+                            value={newSatuanInput}
+                            onChange={(e) => setNewSatuanInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddSatuan(newSatuanInput);
+                              }
+                            }}
+                            className="flex-1 max-w-md px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-700"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddSatuan(newSatuanInput)}
+                            className="px-3.5 py-1.5 bg-[#0A3828] hover:bg-[#07291D] text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1 transition"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>+ Tambah Satuan</span>
+                          </button>
+                        </div>
+
+                        {/* Satuan List Chips */}
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                          {satuanList.map((sat) => (
+                            <div
+                              key={sat.id}
+                              className="flex items-center space-x-1.5 px-3 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 shadow-2xs hover:border-emerald-600 transition"
+                            >
+                              <Package className="w-3 h-3 text-emerald-700" />
+                              <span>{sat.nama}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSatuan(sat.id, sat.nama)}
+                                className="p-0.5 text-slate-400 hover:text-rose-600 rounded transition ml-1"
+                                title={`Hapus satuan ${sat.nama}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {satuanList.length === 0 && (
+                            <span className="text-xs text-slate-400 italic">Memuat daftar satuan dari Supabase...</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -7083,8 +7262,16 @@ export default function EternalPackagingERPWorkspace() {
               }}
               products={products}
               accounts={accounts}
+              categories={categories}
+              satuanList={satuanList}
               companySettings={companySettings}
               onRefresh={loadData}
+              onCategoryCreated={(newCat) => {
+                setCategories((prev) => [...prev, newCat].sort((a, b) => a.nama.localeCompare(b.nama)));
+              }}
+              onSatuanCreated={(newSat) => {
+                setSatuanList((prev) => [...prev, newSat]);
+              }}
               onOpenNewProductModal={() => setIsNewProductModalOpen(true)}
               showToast={showToast}
             />
@@ -9165,8 +9352,15 @@ export default function EternalPackagingERPWorkspace() {
       <QuickAddProductModal
         isOpen={isNewProductModalOpen}
         categories={categories}
+        satuanList={satuanList}
         existingProducts={products}
         onClose={() => setIsNewProductModalOpen(false)}
+        onCategoryCreated={(newCat) => {
+          setCategories((prev) => [...prev, newCat].sort((a, b) => a.nama.localeCompare(b.nama)));
+        }}
+        onSatuanCreated={(newSat) => {
+          setSatuanList((prev) => [...prev, newSat]);
+        }}
         onProductCreated={(newProd) => {
           setProducts((prev) => [...prev, newProd]);
           showToast(`Master kemasan "${newProd.nama}" (${newProd.kode_sku}) berhasil ditambahkan!`, 'success', 'Produk Ditambahkan');

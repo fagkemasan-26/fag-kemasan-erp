@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Package,
   Plus,
@@ -36,9 +36,13 @@ export default function InventoryModule({
   onTabChange,
   products = [],
   accounts = [],
+  categories = [],
+  satuanList = [],
   companySettings = {},
   onRefresh = () => {},
   onOpenNewProductModal = () => {},
+  onCategoryCreated = () => {},
+  onSatuanCreated = () => {},
   showToast = null,
 }) {
   const [activeSubTab, setActiveSubTab] = useState(activeTab);
@@ -537,10 +541,11 @@ export default function InventoryModule({
   const totalValuasi = products.reduce((acc, p) => acc + (Number(p.stok || 0) * Number(p.harga_beli || 0)), 0);
   const lowStockCount = products.filter((p) => Number(p.stok || 0) <= Number(p.min_stok || 5)).length;
 
-  // Unique categories from products
-  const categories = Array.from(
-    new Set(products.map((p) => p.kategori?.nama).filter(Boolean))
-  );
+  // Unique / registered categories for filter toolbar
+  const categoryFilterList = useMemo(() => {
+    if (Array.isArray(categories) && categories.length > 0) return categories;
+    return Array.from(new Set(products.map((p) => p.kategori?.nama).filter(Boolean)));
+  }, [categories, products]);
 
   // Filtered & Sorted products (Items)
   const itemsCfg = tableConfigs?.items || DEFAULT_TABLE_CONFIGS.items;
@@ -771,7 +776,7 @@ export default function InventoryModule({
             filters={advancedFilters.items}
             onFilterChange={(f, v) => handleFilterChange('items', f, v)}
             onResetFilters={() => handleResetFilters('items')}
-            categories={categories}
+            categories={categoryFilterList}
             config={itemsCfg}
             onOpenConfig={() => setActiveConfigModal('items')}
             totalCount={filteredProducts.length}
@@ -1432,16 +1437,25 @@ export default function InventoryModule({
         editingProduct={editingProduct}
         existingProducts={products}
         categories={categories}
+        satuanList={satuanList}
+        onCategoryCreated={onCategoryCreated}
+        onSatuanCreated={onSatuanCreated}
         onClose={() => {
           setIsQuickAddOpen(false);
           setEditingProduct(null);
         }}
-        onProductCreated={async () => {
+        onProductCreated={async (newProd) => {
+          if (showToast && newProd) {
+            showToast(`Master kemasan "${newProd.nama}" (${newProd.kode_sku}) berhasil ditambahkan!`, 'success', 'Produk Ditambahkan');
+          }
           if (onRefresh) await onRefresh();
           setIsQuickAddOpen(false);
           setEditingProduct(null);
         }}
         onProductUpdated={async () => {
+          if (showToast) {
+            showToast('Data master kemasan berhasil diperbarui.', 'success', 'Produk Diperbarui');
+          }
           if (onRefresh) await onRefresh();
           setIsQuickAddOpen(false);
           setEditingProduct(null);
