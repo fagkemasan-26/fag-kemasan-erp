@@ -42,6 +42,12 @@ import PurchaseItemDetailModal from './PurchaseItemDetailModal';
 import FileUploadBukti from './FileUploadBukti';
 import ImageLightboxModal from './ImageLightboxModal';
 import { DEFAULT_PAYMENT_TERMS, calculateDueDate } from '../lib/paymentTerms';
+import {
+  formatDisplayDecimal,
+  formatRupiah,
+  formatLiveInput,
+  parseNumberId,
+} from '../lib/numberFormat';
 
 export default function PurchaseModule({
   activeTab = 'po_beli', // 'po_beli' | 'ri_beli' | 'pi_beli' | 'pp_beli' | 'suppliers'
@@ -397,21 +403,33 @@ export default function PurchaseModule({
   // CALCULATIONS & HELPERS
   // -------------------------------------------------------------
   const calculatePOTotals = () => {
-    const subtotal = poForm.items.reduce((acc, i) => acc + (Number(i.qty || 0) * Number(i.harga_beli || 0) - Number(i.diskonRp || 0)), 0);
+    const subtotal = poForm.items.reduce((acc, i) => {
+      if (i.total !== undefined && i.total !== null) return acc + Number(i.total);
+      const q = Number(i.qty || 0);
+      const h = Number(i.harga_beli || 0);
+      const disc = Number(i.diskonRp || 0) || ((q * h * Number(i.diskonPersen || 0)) / 100);
+      return acc + (q * h - disc);
+    }, 0);
     const diskonFaktur = Number(poForm.discountAmount || 0);
     const dpp = Math.max(0, subtotal - diskonFaktur);
     const ppn = poForm.ppnActive ? Math.round(dpp * 0.11) : 0;
-    const grandTotal = dpp + ppn;
-    return { subtotal, diskonFaktur, ppn, grandTotal };
+    const grandTotal = Math.round(dpp + ppn);
+    return { subtotal: Math.round(subtotal), diskonFaktur, ppn, grandTotal };
   };
 
   const calculateFBTotals = () => {
-    const subtotal = piForm.items.reduce((acc, i) => acc + (Number(i.qty || 0) * Number(i.harga_beli || 0) - Number(i.diskonRp || 0)), 0);
+    const subtotal = piForm.items.reduce((acc, i) => {
+      if (i.total !== undefined && i.total !== null) return acc + Number(i.total);
+      const q = Number(i.qty || 0);
+      const h = Number(i.harga_beli || 0);
+      const disc = Number(i.diskonRp || 0) || ((q * h * Number(i.diskonPersen || 0)) / 100);
+      return acc + (q * h - disc);
+    }, 0);
     const diskonFaktur = Number(piForm.discountAmount || 0);
     const dpp = Math.max(0, subtotal - diskonFaktur);
     const ppn = piForm.ppnActive ? Math.round(dpp * 0.11) : 0;
-    const grandTotal = dpp + ppn;
-    return { subtotal, diskonFaktur, ppn, grandTotal };
+    const grandTotal = Math.round(dpp + ppn);
+    return { subtotal: Math.round(subtotal), diskonFaktur, ppn, grandTotal };
   };
 
   const handleTerminChange = (val, formType = 'FB') => {
@@ -2214,18 +2232,28 @@ export default function PurchaseModule({
                           </td>
                           <td className="py-2.5 px-2.5 text-center border-r border-slate-100 font-bold font-mono text-slate-800">
                             <span className="inline-block px-2 py-0.5 bg-slate-100 rounded-md group-hover:bg-emerald-100/70">
-                              {Number(item.qty || 1).toLocaleString('id-ID')}
+                              {formatDisplayDecimal(item.qty || 1)}
                             </span>
                           </td>
                           <td className="py-2.5 px-2.5 text-center text-slate-600 border-r border-slate-100">{item.satuan || 'Pcs'}</td>
                           <td className="py-2.5 px-2.5 text-right font-mono font-bold text-slate-800 border-r border-slate-100">
-                            Rp {Number(item.harga_beli || 0).toLocaleString('id-ID')}
+                            Rp {formatDisplayDecimal(item.harga_beli || 0)}
                           </td>
-                          <td className="py-2.5 px-2.5 text-right font-mono text-slate-600 border-r border-slate-100">
-                            {Number(item.diskonRp || 0) > 0 ? `Rp ${Number(item.diskonRp).toLocaleString('id-ID')}` : '-'}
+                          <td className="py-2.5 px-2.5 text-center font-mono text-slate-700 border-r border-slate-100">
+                            {Number(item.diskonPersen || 0) > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                {formatDisplayDecimal(item.diskonPersen)}%
+                              </span>
+                            ) : Number(item.diskonRp || 0) > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                Rp {formatDisplayDecimal(item.diskonRp)}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
                           </td>
                           <td className="py-2.5 px-2.5 text-right font-mono font-bold text-emerald-950 border-r border-slate-100">
-                            Rp {(Number(item.qty || 1) * Number(item.harga_beli || 0) - Number(item.diskonRp || 0)).toLocaleString('id-ID')}
+                            Rp {formatDisplayDecimal(Math.round(item.total !== undefined ? item.total : (Number(item.qty || 1) * Number(item.harga_beli || 0) - Number(item.diskonRp || 0))))}
                           </td>
                           <td className="py-2.5 px-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -2282,10 +2310,14 @@ export default function PurchaseModule({
                   <div className="flex justify-between items-center text-slate-600">
                     <span>Potongan Diskon (Rp):</span>
                     <input
-                      type="number"
-                      min="0"
-                      value={poForm.discountAmount ? Number(poForm.discountAmount).toLocaleString("id-ID") : ""}
-                      onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setPoForm((p) => ({ ...p, discountAmount: raw ? parseInt(raw, 10) : 0 })); }}
+                      type="text"
+                      inputMode="decimal"
+                      value={poForm.discountAmount ? formatDisplayDecimal(poForm.discountAmount) : ''}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const { num } = formatLiveInput(e.target.value);
+                        setPoForm((p) => ({ ...p, discountAmount: num }));
+                      }}
                       className="w-32 py-1 px-2 border border-slate-200/80 rounded text-right font-mono bg-white font-bold"
                     />
                   </div>
@@ -3425,18 +3457,28 @@ export default function PurchaseModule({
                           </td>
                           <td className="py-2.5 px-2.5 text-center border-r border-slate-100 font-bold font-mono text-slate-800">
                             <span className="inline-block px-2 py-0.5 bg-slate-100 rounded-md group-hover:bg-emerald-100/70">
-                              {Number(item.qty || 1).toLocaleString('id-ID')}
+                              {formatDisplayDecimal(item.qty || 1)}
                             </span>
                           </td>
                           <td className="py-2.5 px-2.5 text-center text-slate-600 border-r border-slate-100">{item.satuan || 'Pcs'}</td>
                           <td className="py-2.5 px-2.5 text-right font-mono font-bold text-slate-800 border-r border-slate-100">
-                            Rp {Number(item.harga_beli || 0).toLocaleString('id-ID')}
+                            Rp {formatDisplayDecimal(item.harga_beli || 0)}
                           </td>
-                          <td className="py-2.5 px-2.5 text-right font-mono text-slate-600 border-r border-slate-100">
-                            {Number(item.diskonRp || 0) > 0 ? `Rp ${Number(item.diskonRp).toLocaleString('id-ID')}` : '-'}
+                          <td className="py-2.5 px-2.5 text-center font-mono text-slate-700 border-r border-slate-100">
+                            {Number(item.diskonPersen || 0) > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                {formatDisplayDecimal(item.diskonPersen)}%
+                              </span>
+                            ) : Number(item.diskonRp || 0) > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                Rp {formatDisplayDecimal(item.diskonRp)}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
                           </td>
                           <td className="py-2.5 px-2.5 text-right font-mono font-bold text-emerald-950 border-r border-slate-100">
-                            Rp {(Number(item.qty || 1) * Number(item.harga_beli || 0) - Number(item.diskonRp || 0)).toLocaleString('id-ID')}
+                            Rp {formatDisplayDecimal(Math.round(item.total !== undefined ? item.total : (Number(item.qty || 1) * Number(item.harga_beli || 0) - Number(item.diskonRp || 0))))}
                           </td>
                           <td className="py-2.5 px-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -3493,10 +3535,14 @@ export default function PurchaseModule({
                   <div className="flex justify-between items-center text-slate-600">
                     <span>Potongan Diskon (Rp):</span>
                     <input
-                      type="number"
-                      min="0"
-                      value={piForm.discountAmount ? Number(piForm.discountAmount).toLocaleString("id-ID") : ""}
-                      onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setPiForm((p) => ({ ...p, discountAmount: raw ? parseInt(raw, 10) : 0 })); }}
+                      type="text"
+                      inputMode="decimal"
+                      value={piForm.discountAmount ? formatDisplayDecimal(piForm.discountAmount) : ''}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const { num } = formatLiveInput(e.target.value);
+                        setPiForm((p) => ({ ...p, discountAmount: num }));
+                      }}
                       className="w-32 py-1 px-2 border border-slate-200/80 rounded text-right font-mono bg-white font-bold"
                     />
                   </div>
@@ -3992,7 +4038,7 @@ export default function PurchaseModule({
                     <label className="block font-bold text-slate-700">Nominal yang Dibayarkan (Rp):</label>
                     {Number(paymentForm.amount || 0) > 0 && (
                       <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                        Rp {Number(paymentForm.amount || 0).toLocaleString('id-ID')}
+                        Rp {formatDisplayDecimal(paymentForm.amount)}
                       </span>
                     )}
                   </div>
@@ -4000,11 +4046,11 @@ export default function PurchaseModule({
                     <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400">Rp</span>
                     <input
                       type="text"
-                      value={paymentForm.amount ? Number(paymentForm.amount).toLocaleString('id-ID') : ''}
+                      inputMode="decimal"
+                      value={paymentForm.amount ? formatDisplayDecimal(paymentForm.amount) : ''}
                       onChange={(e) => {
-                        const raw = e.target.value.replace(/\D/g, '');
-                        const val = raw ? parseInt(raw, 10) : 0;
-                        setPaymentForm((p) => ({ ...p, amount: val }));
+                        const { num } = formatLiveInput(e.target.value);
+                        setPaymentForm((p) => ({ ...p, amount: num }));
                       }}
                       placeholder="0"
                       className="w-full pl-10 pr-3 py-1.5 border border-slate-200/80 rounded-xl font-mono font-bold text-base text-emerald-950 bg-white"
@@ -4013,7 +4059,7 @@ export default function PurchaseModule({
                   <div className="flex justify-between items-center text-[11px] text-slate-500 mt-1">
                     <span>Terbilang:</span>
                     <strong className="text-emerald-900 font-mono">
-                      Rp {Number(paymentForm.amount || 0).toLocaleString('id-ID')}
+                      Rp {formatDisplayDecimal(paymentForm.amount || 0)}
                     </strong>
                   </div>
                 </div>

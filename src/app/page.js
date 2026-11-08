@@ -35,6 +35,12 @@ import TableFilterToolbar from '../components/TableFilterToolbar';
 import TableConfigModal, { DEFAULT_TABLE_CONFIGS } from '../components/TableConfigModal';
 import { DEFAULT_PAYMENT_TERMS, calculateDueDate } from '../lib/paymentTerms';
 import {
+  formatDisplayDecimal,
+  formatLiveInput,
+  parseNumberId,
+  formatRupiah,
+} from '../lib/numberFormat';
+import {
   LayoutDashboard,
   ShoppingCart,
   Truck,
@@ -3910,12 +3916,14 @@ export default function EternalPackagingERPWorkspace() {
                         <div className="flex items-center space-x-1">
                           <span className="text-slate-400">Rp</span>
                           <input
-                            type="number"
-                            min="0"
-                            value={soForm.discountAmount || ''}
+                            type="text"
+                            inputMode="decimal"
+                            value={soForm.discountAmount ? formatDisplayDecimal(soForm.discountAmount) : ''}
                             placeholder="0"
-                            onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setSoForm({ ...soForm, discountAmount: raw ? parseInt(raw, 10) : 0 }); }}
-                            value={soForm.discountAmount ? Number(soForm.discountAmount).toLocaleString("id-ID") : ""}
+                            onChange={(e) => {
+                              const { num } = formatLiveInput(e.target.value);
+                              setSoForm({ ...soForm, discountAmount: num });
+                            }}
                             className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
                           />
                         </div>
@@ -4498,12 +4506,14 @@ export default function EternalPackagingERPWorkspace() {
                         <div className="flex items-center space-x-1">
                           <span className="text-slate-400">Rp</span>
                           <input
-                            type="number"
-                            min="0"
-                            value={quoteForm.discountAmount || ''}
+                            type="text"
+                            inputMode="decimal"
+                            value={quoteForm.discountAmount ? formatDisplayDecimal(quoteForm.discountAmount) : ''}
                             placeholder="0"
-                            onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setQuoteForm({ ...quoteForm, discountAmount: raw ? parseInt(raw, 10) : 0 }); }}
-                            value={quoteForm.discountAmount ? Number(quoteForm.discountAmount).toLocaleString("id-ID") : ""}
+                            onChange={(e) => {
+                              const { num } = formatLiveInput(e.target.value);
+                              setQuoteForm({ ...quoteForm, discountAmount: num });
+                            }}
                             className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
                           />
                         </div>
@@ -5981,12 +5991,14 @@ export default function EternalPackagingERPWorkspace() {
                         <div className="flex items-center space-x-1">
                           <span className="text-slate-400">Rp</span>
                           <input
-                            type="number"
-                            min="0"
-                            value={siForm.discountAmount || ''}
+                            type="text"
+                            inputMode="decimal"
+                            value={siForm.discountAmount ? formatDisplayDecimal(siForm.discountAmount) : ''}
                             placeholder="0"
-                            onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setSiForm({ ...siForm, discountAmount: raw ? parseInt(raw, 10) : 0 }); }}
-                            value={siForm.discountAmount ? Number(siForm.discountAmount).toLocaleString("id-ID") : ""}
+                            onChange={(e) => {
+                              const { num } = formatLiveInput(e.target.value);
+                              setSiForm({ ...siForm, discountAmount: num });
+                            }}
                             className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
                           />
                         </div>
@@ -6510,7 +6522,7 @@ export default function EternalPackagingERPWorkspace() {
                         <label className="block font-bold text-slate-700">Nominal Diterima (Rp)</label>
                         {Number(payForm.amount || 0) > 0 && (
                           <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            Rp {Number(payForm.amount || 0).toLocaleString('id-ID')}
+                            Rp {formatDisplayDecimal(payForm.amount)}
                           </span>
                         )}
                       </div>
@@ -6518,11 +6530,11 @@ export default function EternalPackagingERPWorkspace() {
                         <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
                         <input
                           type="text"
-                          value={payForm.amount ? Number(payForm.amount).toLocaleString('id-ID') : ''}
+                          inputMode="decimal"
+                          value={payForm.amount ? formatDisplayDecimal(payForm.amount) : ''}
                           onChange={(e) => {
-                            const raw = e.target.value.replace(/\D/g, '');
-                            const val = raw ? parseInt(raw, 10) : 0;
-                            setPayForm({ ...payForm, amount: val });
+                            const { num } = formatLiveInput(e.target.value);
+                            setPayForm({ ...payForm, amount: num });
                           }}
                           placeholder="0"
                           className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-700 bg-white"

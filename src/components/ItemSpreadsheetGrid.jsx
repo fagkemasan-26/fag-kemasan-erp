@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Trash2, Boxes, Edit2, Plus, Calculator, ChevronRight } from 'lucide-react';
 import GoogleLiveProductSearch from './GoogleLiveProductSearch';
 import ItemDetailModal from './ItemDetailModal';
+import { formatDisplayDecimal } from '../lib/numberFormat';
 
 /**
  * ItemSpreadsheetGrid: Accurate Online style spreadsheet table for packaging items.
@@ -169,7 +170,7 @@ export default function ItemSpreadsheetGrid({
                     </td>
                     <td className="py-2 px-3 text-center border-r border-slate-100 font-bold text-slate-900">
                       <span className="bg-slate-100 group-hover:bg-white px-2 py-0.5 rounded border border-slate-200 font-mono">
-                        {Number(it.qty || 0).toLocaleString('id-ID')}
+                        {formatDisplayDecimal(it.qty || 0)}
                       </span>
                     </td>
                     <td className="py-2 px-3 text-center text-slate-600 font-medium border-r border-slate-100">
@@ -177,18 +178,18 @@ export default function ItemSpreadsheetGrid({
                     </td>
                     {formType !== 'DO' && (
                       <td className="py-2 px-3 text-right font-semibold text-slate-800 border-r border-slate-100">
-                        Rp {Number(it.harga_jual || 0).toLocaleString('id-ID')}
+                        Rp {formatDisplayDecimal(it.harga_jual || 0)}
                       </td>
                     )}
                     {formType !== 'DO' && (
                       <td className="py-2 px-3 text-center text-slate-700 border-r border-slate-100">
                         {it.diskonRp > 0 ? (
                           <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                            -Rp {Number(it.diskonRp).toLocaleString('id-ID')}
+                            -Rp {formatDisplayDecimal(it.diskonRp)}
                           </span>
                         ) : it.diskonPersen > 0 ? (
                           <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                            {it.diskonPersen}%
+                            {formatDisplayDecimal(it.diskonPersen)}%
                           </span>
                         ) : (
                           <span className="text-slate-400 font-medium">0%</span>
@@ -197,7 +198,7 @@ export default function ItemSpreadsheetGrid({
                     )}
                     {formType !== 'DO' && (
                       <td className="py-2 px-3 text-right font-black text-slate-900 border-r border-slate-100 font-mono">
-                        Rp {Number(rowTotal).toLocaleString('id-ID')}
+                        Rp {formatDisplayDecimal(Math.round(rowTotal))}
                       </td>
                     )}
                     <td

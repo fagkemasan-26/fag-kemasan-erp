@@ -23,6 +23,12 @@ import {
   ChevronUp,
   Sparkles,
 } from 'lucide-react';
+import {
+  formatDisplayDecimal,
+  formatRupiah,
+  parseNumberId,
+  formatLiveInput,
+} from '../lib/numberFormat';
 
 /**
  * ItemDetailModal: Accurate Online style Line Item Detail & Calculator Dialog
@@ -45,7 +51,7 @@ export default function ItemDetailModal({
   satuanList = [],
   onAddSatuan = null,
 }) {
-  // Line Item States with Real-Time Thousand Separator (Titik .)
+  // Line Item States with Real-Time Thousand Separator (Titik .) & Decimal Comma (,)
   const [qty, setQty] = useState(0);
   const [qtyInput, setQtyInput] = useState('0');
   const [satuan, setSatuan] = useState('Pcs');
@@ -55,6 +61,7 @@ export default function ItemDetailModal({
   const [hargaInput, setHargaInput] = useState('0');
   const [diskonType, setDiskonType] = useState('persen'); // 'persen' | 'rp'
   const [diskonPersen, setDiskonPersen] = useState(0);
+  const [diskonPersenInput, setDiskonPersenInput] = useState('0');
   const [diskonRp, setDiskonRp] = useState(0);
   const [diskonRpInput, setDiskonRpInput] = useState('0');
   const [catatan, setCatatan] = useState('');
@@ -84,6 +91,7 @@ export default function ItemDetailModal({
         setHargaInput('0');
         setDiskonType('persen');
         setDiskonPersen(0);
+        setDiskonPersenInput('0');
         setDiskonRp(0);
         setDiskonRpInput('0');
         setCatatan('');
@@ -92,21 +100,24 @@ export default function ItemDetailModal({
         // Existing line item editing: preserve row values
         const q = Number(item.qty || 0);
         setQty(q);
-        setQtyInput(Number(q).toLocaleString('id-ID'));
+        setQtyInput(formatDisplayDecimal(q));
         setSatuan(item.satuan || 'Pcs');
 
         const h = Number(item.harga_jual ?? item.harga ?? 0);
         setHargaSatuan(h);
-        setHargaInput(Number(h).toLocaleString('id-ID'));
+        setHargaInput(formatDisplayDecimal(h));
 
-        if (item.diskonRp && item.diskonRp > 0) {
+        if (item.diskonRp && item.diskonRp > 0 && (!item.diskonPersen || Number(item.diskonPersen) === 0)) {
           setDiskonType('rp');
-          setDiskonRp(item.diskonRp);
-          setDiskonRpInput(Number(item.diskonRp).toLocaleString('id-ID'));
+          setDiskonRp(Number(item.diskonRp));
+          setDiskonRpInput(formatDisplayDecimal(item.diskonRp));
           setDiskonPersen(0);
+          setDiskonPersenInput('0');
         } else {
           setDiskonType('persen');
-          setDiskonPersen(item.diskonPersen || 0);
+          const dp = Number(item.diskonPersen || 0);
+          setDiskonPersen(dp);
+          setDiskonPersenInput(formatDisplayDecimal(dp));
           setDiskonRp(0);
           setDiskonRpInput('0');
         }
@@ -187,17 +198,17 @@ export default function ItemDetailModal({
   const masterJual = Number(item?.master_harga_jual ?? item?.harga_jual ?? 0);
   const masterBeli = Number(item?.master_harga_beli ?? item?.harga_beli ?? 0);
 
-  // Real-time Number Formatting Handlers (Auto Pemisah Titik)
+  // Real-time Number Formatting Handlers (titik pemisah & koma desimal)
   const handleQtyChange = (e) => {
-    const raw = e.target.value.replace(/\D/g, '');
-    if (!raw) {
+    const val = e.target.value;
+    if (!val) {
       setQtyInput('');
       setQty(0);
       return;
     }
-    const num = parseInt(raw, 10);
+    const { display, num } = formatLiveInput(val);
     setQty(num);
-    setQtyInput(num.toLocaleString('id-ID'));
+    setQtyInput(display);
     if (qtyError) setQtyError('');
   };
 
@@ -205,64 +216,92 @@ export default function ItemDetailModal({
     if (!qtyInput) {
       setQty(0);
       setQtyInput('0');
+    } else {
+      setQtyInput(formatDisplayDecimal(qty));
     }
   };
 
   const incrementQty = (delta) => {
     const next = Math.max(0, (Number(qty) || 0) + delta);
     setQty(next);
-    setQtyInput(next.toLocaleString('id-ID'));
+    setQtyInput(formatDisplayDecimal(next));
     if (qtyError) setQtyError('');
   };
 
   const addQuickQty = (amount) => {
     const next = Math.max(0, (Number(qty) || 0) + amount);
     setQty(next);
-    setQtyInput(next.toLocaleString('id-ID'));
+    setQtyInput(formatDisplayDecimal(next));
     if (qtyError) setQtyError('');
   };
 
   const applyPrice = (price) => {
     const p = Math.max(0, Number(price || 0));
     setHargaSatuan(p);
-    setHargaInput(p.toLocaleString('id-ID'));
+    setHargaInput(formatDisplayDecimal(p));
   };
 
   const handleHargaChange = (e) => {
-    const raw = e.target.value.replace(/\D/g, '');
-    if (!raw) {
+    const val = e.target.value;
+    if (!val) {
       setHargaInput('');
       setHargaSatuan(0);
       return;
     }
-    const num = parseInt(raw, 10);
+    const { display, num } = formatLiveInput(val);
     setHargaSatuan(num);
-    setHargaInput(num.toLocaleString('id-ID'));
+    setHargaInput(display);
   };
 
   const handleHargaBlur = () => {
-    if (!hargaInput) {
+    if (!hargaInput || hargaSatuan === 0) {
       setHargaSatuan(0);
       setHargaInput('0');
+    } else {
+      setHargaInput(formatDisplayDecimal(hargaSatuan));
+    }
+  };
+
+  const handleDiskonPersenChange = (e) => {
+    const val = e.target.value;
+    if (!val) {
+      setDiskonPersenInput('');
+      setDiskonPersen(0);
+      return;
+    }
+    const { display, num } = formatLiveInput(val, 2);
+    const clamped = Math.min(100, Math.max(0, num));
+    setDiskonPersenInput(display);
+    setDiskonPersen(clamped);
+  };
+
+  const handleDiskonPersenBlur = () => {
+    if (!diskonPersenInput || diskonPersen === 0) {
+      setDiskonPersen(0);
+      setDiskonPersenInput('0');
+    } else {
+      setDiskonPersenInput(formatDisplayDecimal(diskonPersen));
     }
   };
 
   const handleDiskonRpChange = (e) => {
-    const raw = e.target.value.replace(/\D/g, '');
-    if (!raw) {
+    const val = e.target.value;
+    if (!val) {
       setDiskonRpInput('');
       setDiskonRp(0);
       return;
     }
-    const num = parseInt(raw, 10);
+    const { display, num } = formatLiveInput(val);
     setDiskonRp(num);
-    setDiskonRpInput(num.toLocaleString('id-ID'));
+    setDiskonRpInput(display);
   };
 
   const handleDiskonRpBlur = () => {
-    if (!diskonRpInput) {
+    if (!diskonRpInput || diskonRp === 0) {
       setDiskonRp(0);
       setDiskonRpInput('0');
+    } else {
+      setDiskonRpInput(formatDisplayDecimal(diskonRp));
     }
   };
 
@@ -281,7 +320,7 @@ export default function ItemDetailModal({
     if (!val || val === '0') return '0';
     if (val.includes('.')) {
       const parts = val.split('.');
-      return `${Number(parts[0] || 0).toLocaleString('id-ID')}.${parts[1]}`;
+      return `${Number(parts[0] || 0).toLocaleString('id-ID')},${parts[1]}`;
     }
     const num = Number(val);
     return isNaN(num) ? val : num.toLocaleString('id-ID');
@@ -362,23 +401,31 @@ export default function ItemDetailModal({
 
   // Transfer calculator result
   const transferToQty = () => {
-    const val = Math.max(1, Math.round(parseFloat(calcDisplay) || 1));
+    const val = Math.max(1, parseFloat(calcDisplay) || 1);
     setQty(val);
-    setQtyInput(val.toLocaleString('id-ID'));
+    setQtyInput(formatDisplayDecimal(val));
+    if (qtyError) setQtyError('');
   };
 
   const transferToPrice = () => {
-    const val = Math.max(0, Math.round(parseFloat(calcDisplay) || 0));
+    const val = Math.max(0, parseFloat(calcDisplay) || 0);
     setHargaSatuan(val);
-    setHargaInput(val.toLocaleString('id-ID'));
+    setHargaInput(formatDisplayDecimal(val));
   };
 
   const transferToDiscount = () => {
-    const val = Math.max(0, Math.round(parseFloat(calcDisplay) || 0));
-    setDiskonType('rp');
-    setDiskonRp(val);
-    setDiskonRpInput(val.toLocaleString('id-ID'));
-    setDiskonPersen(0);
+    const val = Math.max(0, parseFloat(calcDisplay) || 0);
+    if (diskonType === 'persen') {
+      const clamped = Math.min(100, val);
+      setDiskonPersen(clamped);
+      setDiskonPersenInput(formatDisplayDecimal(clamped));
+    } else {
+      setDiskonType('rp');
+      setDiskonRp(val);
+      setDiskonRpInput(formatDisplayDecimal(val));
+      setDiskonPersen(0);
+      setDiskonPersenInput('0');
+    }
   };
 
   // Submit back to parent (Guaranteed Single Execution)
@@ -886,21 +933,22 @@ export default function ItemDetailModal({
 
                   {diskonType === 'persen' ? (
                     <div className="flex items-center space-x-2">
-                      <div className="relative w-32">
+                      <div className="relative w-36">
                         <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={diskonPersen}
-                          onChange={(e) => setDiskonPersen(Math.min(100, Math.max(0, Number(e.target.value))))}
+                          type="text"
+                          inputMode="decimal"
+                          value={diskonPersenInput}
+                          onChange={handleDiskonPersenChange}
+                          onBlur={handleDiskonPersenBlur}
+                          placeholder="0"
                           className="w-full pr-7 pl-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-center outline-none focus:ring-1 focus:ring-emerald-700"
                         />
                         <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">
                           %
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-500 font-medium">
-                        = Potongan: <strong className="text-rose-600">Rp {calculatedDiscount.toLocaleString('id-ID')}</strong>
+                      <span className="text-[11px] text-slate-500 font-medium truncate">
+                        = Potongan: <strong className="text-rose-600">Rp {formatDisplayDecimal(Math.round(calculatedDiscount))}</strong>
                       </span>
                     </div>
                   ) : (
