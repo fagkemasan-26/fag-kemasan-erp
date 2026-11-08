@@ -16,6 +16,7 @@ import {
   Percent,
 } from 'lucide-react';
 import ModernDatePicker from './ModernDatePicker';
+import FileUploadBukti from './FileUploadBukti';
 
 /**
  * DownPaymentModal (Accurate Online Workflow Standard):
@@ -48,6 +49,7 @@ export default function DownPaymentModal({
   const [accountId, setAccountId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('TRANSFER');
   const [catatan, setCatatan] = useState('');
+  const [lampiranUrl, setLampiranUrl] = useState('');
   const [isTaxable, setIsTaxable] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -56,6 +58,7 @@ export default function DownPaymentModal({
   useEffect(() => {
     if (isOpen) {
       setErrorMsg('');
+      setLampiranUrl('');
       setDate(new Date().toISOString().split('T')[0]);
 
       // Default Bank BCA or first Kas/Bank account
@@ -265,6 +268,7 @@ export default function DownPaymentModal({
         isTaxable,
         taxAmount: isTaxable ? Math.round(Number(amount) * 0.11) : 0,
         catatan,
+        lampiran_url: lampiranUrl || null,
       });
       onClose();
     } catch (err) {
@@ -622,6 +626,15 @@ export default function DownPaymentModal({
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
+
+          {/* BUKTI FOTO / TRANSFER DP */}
+          <FileUploadBukti
+            label="Bukti Foto / Struk Transfer Uang Muka (DP)"
+            value={lampiranUrl}
+            onChange={setLampiranUrl}
+            docType="dp"
+            helpText="Upload foto struk transfer ATM, mobile banking, atau mutasi bank."
+          />
 
           {/* PREVIEW JURNAL KEUANGAN (GAAP/PSAK ACCURATE ONLINE) */}
           <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-2.5 text-[11px] space-y-1">

@@ -28,6 +28,8 @@ import CashVoucherPrintModal from '../components/CashVoucherPrintModal';
 import LoginPage from '../components/LoginPage';
 import UserManagementModal from '../components/UserManagementModal';
 import ToastNotification from '../components/ToastNotification';
+import FileUploadBukti from '../components/FileUploadBukti';
+import ImageLightboxModal from '../components/ImageLightboxModal';
 import DownPaymentModal from '../components/DownPaymentModal';
 import TableFilterToolbar from '../components/TableFilterToolbar';
 import TableConfigModal, { DEFAULT_TABLE_CONFIGS } from '../components/TableConfigModal';
@@ -93,6 +95,7 @@ import {
   Percent,
   ArrowDownLeft,
   BarChart3,
+  Camera,
   LogOut,
 } from 'lucide-react';
 
@@ -690,6 +693,9 @@ export default function EternalPackagingERPWorkspace() {
   // FORM STATES (FORMAT: [PREFIX].[YYYY].[MM].[DD].[0001])
   // ========================================================
 
+  // Lightbox Modal for Photo Proofs
+  const [lightboxImage, setLightboxImage] = useState(null);
+
   // 1. Order Masuk / Pesanan Penjualan (PO)
   const [soForm, setSoForm] = useState({
     editingId: null,
@@ -701,6 +707,7 @@ export default function EternalPackagingERPWorkspace() {
     discountAmount: 0,
     ppnActive: false,
     catatan: '',
+    lampiran_url: '',
     uangMuka: 0,
     statusBayar: 'BELUM_BAYAR',
     status: 'MENUNGGU_PENGIRIMAN',
@@ -716,6 +723,7 @@ export default function EternalPackagingERPWorkspace() {
     discountAmount: 0,
     ppnActive: false,
     catatan: '',
+    lampiran_url: '',
     status: 'DISETUJUI',
   });
 
@@ -730,6 +738,7 @@ export default function EternalPackagingERPWorkspace() {
     noResi: '',
     items: [],
     catatan: '',
+    lampiran_url: '',
     status: 'TERKIRIM',
   });
 
@@ -748,6 +757,7 @@ export default function EternalPackagingERPWorkspace() {
     ppnActive: false,
     uangMuka: 0,
     catatan: '',
+    lampiran_url: '',
     status: 'PIUTANG',
   });
 
@@ -760,6 +770,7 @@ export default function EternalPackagingERPWorkspace() {
     bankAccountId: '',
     amount: 0,
     catatan: '',
+    lampiran_url: '',
   });
 
   // Refresh Sequential Numbers from PostgreSQL
@@ -1091,6 +1102,7 @@ export default function EternalPackagingERPWorkspace() {
             customer_id: soForm.customerId,
             total: grandTotal,
             catatan: soForm.catatan,
+            lampiran_url: soForm.lampiran_url || null,
           })
           .eq('id', soForm.editingId);
         if (updErr) throw updErr;
@@ -1126,6 +1138,7 @@ export default function EternalPackagingERPWorkspace() {
           status_bayar: 'BELUM_BAYAR',
           uang_muka: 0,
           catatan: soForm.catatan,
+          lampiran_url: soForm.lampiran_url || null,
         })
         .select()
         .single();
@@ -1168,6 +1181,7 @@ export default function EternalPackagingERPWorkspace() {
             customer_id: quoteForm.customerId,
             total: grandTotal,
             catatan: quoteForm.catatan,
+            lampiran_url: quoteForm.lampiran_url || null,
           })
           .eq('id', quoteForm.editingId);
         if (qErr) throw qErr;
@@ -1199,6 +1213,7 @@ export default function EternalPackagingERPWorkspace() {
           total: grandTotal,
           status: 'DISETUJUI',
           catatan: quoteForm.catatan,
+          lampiran_url: quoteForm.lampiran_url || null,
         })
         .select()
         .single();
@@ -1242,6 +1257,7 @@ export default function EternalPackagingERPWorkspace() {
             ekspedisi: doForm.ekspedisi,
             no_resi: doForm.noResi,
             catatan: doForm.catatan,
+            lampiran_url: doForm.lampiran_url || null,
           })
           .eq('id', doForm.editingId);
         if (hError) throw hError;
@@ -1273,6 +1289,7 @@ export default function EternalPackagingERPWorkspace() {
           no_resi: doForm.noResi,
           status: 'TERKIRIM',
           catatan: doForm.catatan,
+          lampiran_url: doForm.lampiran_url || null,
         })
         .select()
         .single();
@@ -1347,6 +1364,7 @@ export default function EternalPackagingERPWorkspace() {
             syarat_bayar: siForm.termin,
             tgl_jatuh_tempo: siForm.dueDate,
             catatan: siForm.catatan,
+            lampiran_url: siForm.lampiran_url || null,
           })
           .eq('id', siForm.editingId);
         if (hError) throw hError;
@@ -1393,6 +1411,7 @@ export default function EternalPackagingERPWorkspace() {
           tgl_jatuh_tempo: siForm.dueDate,
           uang_muka_digunakan: dpAmount,
           catatan: siForm.catatan,
+          lampiran_url: siForm.lampiran_url || null,
         })
         .select()
         .single();
@@ -1551,6 +1570,7 @@ export default function EternalPackagingERPWorkspace() {
         metode_bayar: 'TRANSFER',
         tipe_penerimaan: 'PELUNASAN_FAKTUR',
         catatan: payForm.catatan,
+        lampiran_url: payForm.lampiran_url || null,
       });
 
       const currentInv = salesInvoices.find((i) => i.id === payForm.invoiceId);
@@ -1741,6 +1761,7 @@ export default function EternalPackagingERPWorkspace() {
         akun_kas_id: accountId,
         total_bayar: Number(amount),
         metode_bayar: paymentMethod || 'TRANSFER',
+        lampiran_url: payload.lampiran_url || null,
         catatan:
           catatan ||
           `Uang muka ${
@@ -2032,6 +2053,7 @@ export default function EternalPackagingERPWorkspace() {
       discountAmount: Number(order.diskon || 0),
       ppnActive: Boolean(order.ppn_nominal && Number(order.ppn_nominal) > 0),
       catatan: order.catatan || '',
+      lampiran_url: order.lampiran_url || '',
       uangMuka: Number(order.uang_muka || 0),
       statusBayar: order.status_bayar || 'BELUM_BAYAR',
       status: order.status,
@@ -2052,6 +2074,7 @@ export default function EternalPackagingERPWorkspace() {
       discountAmount: 0,
       ppnActive: Boolean(companySettings.ppnAktifDefault),
       catatan: '',
+      lampiran_url: '',
       uangMuka: 0,
       statusBayar: 'BELUM_BAYAR',
       status: 'MENUNGGU_PENGIRIMAN',
@@ -2080,6 +2103,7 @@ export default function EternalPackagingERPWorkspace() {
       discountAmount: Number(quote.diskon || 0),
       ppnActive: Boolean(quote.ppn_nominal && Number(quote.ppn_nominal) > 0),
       catatan: quote.catatan || '',
+      lampiran_url: quote.lampiran_url || '',
       status: quote.status,
     });
     setViewModes((p) => ({ ...p, quotation: 'form' }));
@@ -2097,6 +2121,7 @@ export default function EternalPackagingERPWorkspace() {
       discountAmount: 0,
       ppnActive: Boolean(companySettings.ppnAktifDefault),
       catatan: '',
+      lampiran_url: '',
       status: 'DISETUJUI',
     });
     setViewModes((p) => ({ ...p, quotation: 'form' }));
@@ -2120,6 +2145,7 @@ export default function EternalPackagingERPWorkspace() {
         qty: Number(d.qty || 0),
       })),
       catatan: doItem.catatan || '',
+      lampiran_url: doItem.lampiran_url || '',
       status: doItem.status,
     });
     setViewModes((p) => ({ ...p, do: 'form' }));
@@ -2138,6 +2164,7 @@ export default function EternalPackagingERPWorkspace() {
       noResi: '',
       items: [],
       catatan: '',
+      lampiran_url: '',
       status: 'TERKIRIM',
     });
     setViewModes((p) => ({ ...p, do: 'form' }));
@@ -2169,6 +2196,7 @@ export default function EternalPackagingERPWorkspace() {
       ppnActive: Boolean(invoice.ppn_nominal && Number(invoice.ppn_nominal) > 0),
       uangMuka: Number(invoice.uang_muka || 0),
       catatan: invoice.catatan || '',
+      lampiran_url: invoice.lampiran_url || '',
       status: invoice.status,
     });
     setViewModes((p) => ({ ...p, si: 'form' }));
@@ -2191,6 +2219,7 @@ export default function EternalPackagingERPWorkspace() {
       ppnActive: Boolean(companySettings.ppnAktifDefault),
       uangMuka: 0,
       catatan: '',
+      lampiran_url: '',
       status: 'PIUTANG',
     });
     setViewModes((p) => ({ ...p, si: 'form' }));
@@ -3555,7 +3584,23 @@ export default function EternalPackagingERPWorkspace() {
                                   {cols.noPesanan !== false && (
                                     <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                       <div className="flex items-center justify-between">
-                                        <span className="group-hover:underline">{s.no_pesanan}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="group-hover:underline">{s.no_pesanan}</span>
+                                          {s.lampiran_url && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLightboxImage({ url: s.lampiran_url, title: `Bukti Pesanan - ${s.no_pesanan}` });
+                                              }}
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                              title="Lihat Bukti Foto / Dokumen"
+                                            >
+                                              <Camera className="w-3 h-3 text-emerald-700" />
+                                              <span>Foto</span>
+                                            </button>
+                                          )}
+                                        </div>
                                         <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                       </div>
                                     </td>
@@ -3733,16 +3778,26 @@ export default function EternalPackagingERPWorkspace() {
                     />
 
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-3 border-t border-slate-200 text-xs">
-                    <div className="w-full sm:w-1/2">
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Catatan Pesanan &amp; Alamat Pengiriman Spesifik
-                      </label>
-                      <textarea
-                        rows="2"
-                        value={soForm.catatan}
-                        onChange={(e) => setSoForm({ ...soForm, catatan: e.target.value })}
-                        placeholder="Contoh: Kirim via Lalamove / Truk Box, wajib lakban fragile..."
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                    <div className="w-full sm:w-1/2 space-y-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Catatan Pesanan &amp; Alamat Pengiriman Spesifik
+                        </label>
+                        <textarea
+                          rows="2"
+                          value={soForm.catatan}
+                          onChange={(e) => setSoForm({ ...soForm, catatan: e.target.value })}
+                          placeholder="Contoh: Kirim via Lalamove / Truk Box, wajib lakban fragile..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      <FileUploadBukti
+                        label="Lampiran Bukti PO Fisik / Mockup Desain Cetak"
+                        value={soForm.lampiran_url}
+                        onChange={(url) => setSoForm({ ...soForm, lampiran_url: url })}
+                        docType="po"
+                        helpText="Upload foto surat PO customer atau mockup desain cetak kemasan."
                       />
                     </div>
 
@@ -4158,7 +4213,23 @@ export default function EternalPackagingERPWorkspace() {
                                   {cols.noPenawaran !== false && (
                                     <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                       <div className="flex items-center justify-between">
-                                        <span className="group-hover:underline">{q.no_penawaran}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="group-hover:underline">{q.no_penawaran}</span>
+                                          {q.lampiran_url && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLightboxImage({ url: q.lampiran_url, title: `Bukti Penawaran / PI - ${q.no_penawaran}` });
+                                              }}
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                              title="Lihat Bukti Foto / Dokumen"
+                                            >
+                                              <Camera className="w-3 h-3 text-emerald-700" />
+                                              <span>Foto</span>
+                                            </button>
+                                          )}
+                                        </div>
                                         <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                       </div>
                                     </td>
@@ -4281,16 +4352,26 @@ export default function EternalPackagingERPWorkspace() {
 
                   {/* Summary & Totals Footer for Proforma Invoice */}
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-3 border-t border-slate-200 text-xs">
-                    <div className="w-full sm:w-1/2">
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Catatan &amp; Syarat Ketentuan Proforma Invoice
-                      </label>
-                      <textarea
-                        rows="2"
-                        value={quoteForm.catatan}
-                        onChange={(e) => setQuoteForm({ ...quoteForm, catatan: e.target.value })}
-                        placeholder="Contoh: Harga belum termasuk ongkos kirim luar kota, estimasi produksi 3-5 hari kerja..."
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                    <div className="w-full sm:w-1/2 space-y-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Catatan &amp; Syarat Ketentuan Proforma Invoice
+                        </label>
+                        <textarea
+                          rows="2"
+                          value={quoteForm.catatan}
+                          onChange={(e) => setQuoteForm({ ...quoteForm, catatan: e.target.value })}
+                          placeholder="Contoh: Harga belum termasuk ongkos kirim luar kota, estimasi produksi 3-5 hari kerja..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      <FileUploadBukti
+                        label="Lampiran Penawaran / Spek Kemasan"
+                        value={quoteForm.lampiran_url}
+                        onChange={(url) => setQuoteForm({ ...quoteForm, lampiran_url: url })}
+                        docType="pi"
+                        helpText="Upload dokumen penawaran atau spek khusus kemasan."
                       />
                     </div>
 
@@ -4488,7 +4569,25 @@ export default function EternalPackagingERPWorkspace() {
                               {idx + 1}
                             </td>
                             <td className="py-2.5 px-3 font-mono font-bold text-emerald-900 border-r border-slate-100">
-                              {dp.no_bukti}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{dp.no_bukti}</span>
+                                  {dp.lampiran_url && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setLightboxImage({ url: dp.lampiran_url, title: `Bukti Uang Muka / Transfer - ${dp.no_bukti}` });
+                                      }}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                      title="Lihat Bukti Foto / Transfer"
+                                    >
+                                      <Camera className="w-3 h-3 text-emerald-700" />
+                                      <span>Foto</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 text-slate-600 border-r border-slate-100">{dp.tanggal}</td>
                             <td className="py-2.5 px-3 font-bold text-slate-900 border-r border-slate-100">
@@ -4907,7 +5006,23 @@ export default function EternalPackagingERPWorkspace() {
                                   {cols.noPengiriman !== false && (
                                     <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                       <div className="flex items-center justify-between">
-                                        <span className="group-hover:underline">{d.no_surat_jalan}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="group-hover:underline">{d.no_surat_jalan}</span>
+                                          {d.lampiran_url && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLightboxImage({ url: d.lampiran_url, title: `Bukti Surat Jalan / Pengiriman - ${d.no_surat_jalan}` });
+                                              }}
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                              title="Lihat Bukti Foto Surat Jalan / Terima Barang"
+                                            >
+                                              <Camera className="w-3 h-3 text-emerald-700" />
+                                              <span>Foto</span>
+                                            </button>
+                                          )}
+                                        </div>
                                         <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                       </div>
                                     </td>
@@ -5036,16 +5151,26 @@ export default function EternalPackagingERPWorkspace() {
 
                   {/* Summary & Metrics Footer for Delivery Order */}
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-3 border-t border-slate-200 text-xs">
-                    <div className="w-full sm:w-1/2">
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Catatan Pengiriman &amp; Instruksi Khusus Driver
-                      </label>
-                      <textarea
-                        rows="2"
-                        value={doForm.catatan}
-                        onChange={(e) => setDoForm({ ...doForm, catatan: e.target.value })}
-                        placeholder="Contoh: Diterima oleh Pak Slamet / Masuk pintu barat gerbang gudang..."
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                    <div className="w-full sm:w-1/2 space-y-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Catatan Pengiriman &amp; Instruksi Khusus Driver
+                        </label>
+                        <textarea
+                          rows="2"
+                          value={doForm.catatan}
+                          onChange={(e) => setDoForm({ ...doForm, catatan: e.target.value })}
+                          placeholder="Contoh: Diterima oleh Pak Slamet / Masuk pintu barat gerbang gudang..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      <FileUploadBukti
+                        label="Foto Bukti Pengiriman / Resi / Serah Terima Barang"
+                        value={doForm.lampiran_url}
+                        onChange={(url) => setDoForm({ ...doForm, lampiran_url: url })}
+                        docType="do"
+                        helpText="Upload foto barang di armada pengiriman, resi ekspedisi, atau paraf penerima."
                       />
                     </div>
 
@@ -5372,7 +5497,23 @@ export default function EternalPackagingERPWorkspace() {
                                   {cols.noInvoice !== false && (
                                     <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                       <div className="flex items-center justify-between">
-                                        <span className="group-hover:underline">{i.no_invoice}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="group-hover:underline">{i.no_invoice}</span>
+                                          {i.lampiran_url && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLightboxImage({ url: i.lampiran_url, title: `Bukti Invoice / Faktur Penjualan - ${i.no_invoice}` });
+                                              }}
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                              title="Lihat Bukti Foto / Dokumen"
+                                            >
+                                              <Camera className="w-3 h-3 text-emerald-700" />
+                                              <span>Foto</span>
+                                            </button>
+                                          )}
+                                        </div>
                                         <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                       </div>
                                     </td>
@@ -5529,16 +5670,26 @@ export default function EternalPackagingERPWorkspace() {
 
                   {/* Summary & Totals Footer for Sales Invoice */}
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-3 border-t border-slate-200 text-xs">
-                    <div className="w-full sm:w-1/2">
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Catatan Invoice &amp; Rekening Transfer Pembayaran
-                      </label>
-                      <textarea
-                        rows="2"
-                        value={siForm.catatan}
-                        onChange={(e) => setSiForm({ ...siForm, catatan: e.target.value })}
-                        placeholder="Contoh: Pembayaran transfer ke Bank BCA 123-456-7890 a.n. PT Eternal Packaging Indonesia..."
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                    <div className="w-full sm:w-1/2 space-y-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Catatan Invoice &amp; Rekening Transfer Pembayaran
+                        </label>
+                        <textarea
+                          rows="2"
+                          value={siForm.catatan}
+                          onChange={(e) => setSiForm({ ...siForm, catatan: e.target.value })}
+                          placeholder="Contoh: Pembayaran transfer ke Bank BCA 123-456-7890 a.n. PT Eternal Packaging Indonesia..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      <FileUploadBukti
+                        label="Lampiran Faktur / Berita Acara Tagihan"
+                        value={siForm.lampiran_url}
+                        onChange={(url) => setSiForm({ ...siForm, lampiran_url: url })}
+                        docType="si"
+                        helpText="Upload dokumen penagihan fisik, faktur pajak, atau berita acara."
                       />
                     </div>
 
@@ -5871,7 +6022,23 @@ export default function EternalPackagingERPWorkspace() {
                                   {cols.noBukti !== false && (
                                     <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                       <div className="flex items-center justify-between">
-                                        <span className="group-hover:underline">{p.no_bukti}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="group-hover:underline">{p.no_bukti}</span>
+                                          {p.lampiran_url && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLightboxImage({ url: p.lampiran_url, title: `Bukti Pelunasan / Transfer - ${p.no_bukti}` });
+                                              }}
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                              title="Lihat Bukti Foto Bukti Bayar / Slip Transfer"
+                                            >
+                                              <Camera className="w-3 h-3 text-emerald-700" />
+                                              <span>Foto</span>
+                                            </button>
+                                          )}
+                                        </div>
                                         <Printer className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                       </div>
                                     </td>
@@ -6012,6 +6179,30 @@ export default function EternalPackagingERPWorkspace() {
                         value={payForm.amount}
                         onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
                         className="w-full px-3 py-2 border rounded-lg font-bold text-emerald-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Catatan & Upload Bukti Transfer Pelanggan */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Catatan Kuitansi / Referensi Transfer</label>
+                      <input
+                        type="text"
+                        value={payForm.catatan || ''}
+                        onChange={(e) => setPayForm({ ...payForm, catatan: e.target.value })}
+                        placeholder="Contoh: Pelunasan via Transfer BCA a.n. Fauzan..."
+                        className="w-full px-3 py-2 border rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <FileUploadBukti
+                        label="Foto Bukti Transfer Pembayaran Pelanggan"
+                        value={payForm.lampiran_url}
+                        onChange={(url) => setPayForm({ ...payForm, lampiran_url: url })}
+                        docType="cr"
+                        compact={true}
+                        helpText="Upload foto struk transfer / m-banking."
                       />
                     </div>
                   </div>
@@ -9489,6 +9680,14 @@ export default function EternalPackagingERPWorkspace() {
         onClose={() => setIsUserManagementOpen(false)}
         currentUser={currentUser}
         onUserUpdated={(updatedUser) => setCurrentUser(updatedUser)}
+      />
+
+      {/* Lightbox Preview Modal for Bukti Transaksi */}
+      <ImageLightboxModal
+        isOpen={!!lightboxImage}
+        imageUrl={lightboxImage?.url}
+        title={lightboxImage?.title || 'Bukti Transaksi'}
+        onClose={() => setLightboxImage(null)}
       />
 
       {/* Enterprise Toast Notification Banner (Floating Top Right) */}

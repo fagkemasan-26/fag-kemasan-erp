@@ -29,6 +29,7 @@ import {
   Eye,
   Check,
   ExternalLink,
+  Camera,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getNextDocNumber, peekNextDocNumber, createJournalEntry } from '../lib/accounting';
@@ -38,6 +39,8 @@ import TableFilterToolbar from './TableFilterToolbar';
 import TableConfigModal, { DEFAULT_TABLE_CONFIGS } from './TableConfigModal';
 import GoogleLiveSupplierSearch from './GoogleLiveSupplierSearch';
 import PurchaseItemDetailModal from './PurchaseItemDetailModal';
+import FileUploadBukti from './FileUploadBukti';
+import ImageLightboxModal from './ImageLightboxModal';
 import { DEFAULT_PAYMENT_TERMS, calculateDueDate } from '../lib/paymentTerms';
 
 export default function PurchaseModule({
@@ -191,6 +194,9 @@ export default function PurchaseModule({
   // FORM STATES FOR EACH PURCHASING SUB-MODULE
   // -------------------------------------------------------------
 
+  // Lightbox Modal State for Bukti Foto
+  const [lightboxImage, setLightboxImage] = useState(null);
+
   // 1. Pesanan Pembelian (PO) Form
   const [poForm, setPoForm] = useState({
     editingId: null,
@@ -202,6 +208,7 @@ export default function PurchaseModule({
     discountAmount: 0,
     ppnActive: false,
     catatan: '',
+    lampiran_url: '',
     status: 'MENUNGGU_PENERIMAAN',
   });
 
@@ -217,6 +224,7 @@ export default function PurchaseModule({
     warehouse: 'Gudang Utama Kemasan',
     items: [],
     keterangan: '',
+    lampiran_url: '',
     status: 'DITERIMA',
   });
 
@@ -233,6 +241,7 @@ export default function PurchaseModule({
     discountAmount: 0,
     ppnActive: false,
     catatan: '',
+    lampiran_url: '',
     poId: null,
     riId: null,
     statusBayar: 'HUTANG',
@@ -249,6 +258,7 @@ export default function PurchaseModule({
     accountId: '',
     amount: 0,
     catatan: '',
+    lampiran_url: '',
   });
 
   // Live item search dropdown state
@@ -563,6 +573,7 @@ export default function PurchaseModule({
       discountAmount: Number(po.diskon || 0),
       ppnActive: Boolean(po.ppn_nominal && Number(po.ppn_nominal) > 0),
       catatan: po.catatan || '',
+      lampiran_url: po.lampiran_url || '',
       status: po.status,
     });
     switchViewMode('po_beli', 'form');
@@ -581,6 +592,7 @@ export default function PurchaseModule({
       discountAmount: 0,
       ppnActive: false,
       catatan: '',
+      lampiran_url: '',
       status: 'MENUNGGU_PENERIMAAN',
     });
     switchViewMode('po_beli', 'form');
@@ -609,6 +621,7 @@ export default function PurchaseModule({
         };
       }),
       keterangan: ri.keterangan || '',
+      lampiran_url: ri.lampiran_url || '',
       status: ri.status,
     });
     switchViewMode('ri_beli', 'form');
@@ -628,6 +641,7 @@ export default function PurchaseModule({
       warehouse: 'Gudang Utama Kemasan',
       items: [],
       keterangan: '',
+      lampiran_url: '',
       status: 'DITERIMA',
     });
     switchViewMode('ri_beli', 'form');
@@ -659,6 +673,7 @@ export default function PurchaseModule({
       discountAmount: Number(p.diskon || 0),
       ppnActive: Boolean(p.ppn_nominal && Number(p.ppn_nominal) > 0),
       catatan: p.catatan || '',
+      lampiran_url: p.lampiran_url || '',
       poId: p.pesanan_pembelian_id || null,
       riId: p.penerimaan_barang_id || null,
       statusBayar: p.status_bayar,
@@ -682,6 +697,7 @@ export default function PurchaseModule({
       discountAmount: 0,
       ppnActive: false,
       catatan: '',
+      lampiran_url: '',
       poId: null,
       riId: null,
       statusBayar: 'HUTANG',
@@ -929,6 +945,7 @@ export default function PurchaseModule({
             supplier_id: poForm.supplierId,
             total: grandTotal,
             catatan: poForm.catatan,
+            lampiran_url: poForm.lampiran_url || null,
           })
           .eq('id', poForm.editingId);
         if (updErr) throw updErr;
@@ -953,6 +970,7 @@ export default function PurchaseModule({
             total: grandTotal,
             status: 'MENUNGGU_PENERIMAAN',
             catatan: poForm.catatan,
+            lampiran_url: poForm.lampiran_url || null,
           })
           .select()
           .single();
@@ -1005,6 +1023,7 @@ export default function PurchaseModule({
             pesanan_pembelian_id: riForm.poId || null,
             no_surat_jalan_supplier: riForm.supplierSJNo || null,
             keterangan: riForm.keterangan,
+            lampiran_url: riForm.lampiran_url || null,
           })
           .eq('id', riForm.editingId);
         if (rErr) throw rErr;
@@ -1058,6 +1077,7 @@ export default function PurchaseModule({
             pesanan_pembelian_id: riForm.poId || null,
             no_surat_jalan_supplier: riForm.supplierSJNo || null,
             keterangan: riForm.keterangan,
+            lampiran_url: riForm.lampiran_url || null,
             status: 'DITERIMA',
           })
           .select()
@@ -1144,6 +1164,7 @@ export default function PurchaseModule({
             tgl_jatuh_tempo: piForm.dueDate,
             no_faktur_supplier: piForm.supplierNo || null,
             catatan: piForm.catatan,
+            lampiran_url: piForm.lampiran_url || null,
           })
           .eq('id', piForm.editingId);
         if (updErr) throw updErr;
@@ -1184,6 +1205,7 @@ export default function PurchaseModule({
           pesanan_pembelian_id: piForm.poId || null,
           penerimaan_barang_id: piForm.riId || null,
           catatan: piForm.catatan,
+          lampiran_url: piForm.lampiran_url || null,
         })
         .select()
         .single();
@@ -1314,6 +1336,7 @@ export default function PurchaseModule({
         total_bayar: Number(paymentForm.amount),
         metode_bayar: 'TRANSFER_BANK',
         catatan: paymentForm.catatan || `Pelunasan Faktur ${targetPurchase?.no_faktur}`,
+        lampiran_url: paymentForm.lampiran_url || null,
       });
       if (payErr) throw payErr;
 
@@ -1927,7 +1950,23 @@ export default function PurchaseModule({
                               {cols.noPesanan !== false && (
                                 <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                   <div className="flex items-center justify-between">
-                                    <span className="group-hover:underline">{po.no_pesanan}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="group-hover:underline">{po.no_pesanan}</span>
+                                      {po.lampiran_url && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLightboxImage({ url: po.lampiran_url, title: `Bukti PO Pembelian - ${po.no_pesanan}` });
+                                          }}
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                          title="Lihat Bukti Foto / Dokumen"
+                                        >
+                                          <Camera className="w-3 h-3 text-emerald-700" />
+                                          <span>Bukti</span>
+                                        </button>
+                                      )}
+                                    </div>
                                     <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                   </div>
                                 </td>
@@ -2198,14 +2237,24 @@ export default function PurchaseModule({
 
               {/* FOOTER TOTALS */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Catatan Pesanan Pembelian:</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Instruksi pengiriman dari pabrik, tanggal kirim, syarat kemasan..."
-                    value={poForm.catatan}
-                    onChange={(e) => setPoForm((p) => ({ ...p, catatan: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-200/80 rounded-xl focus:ring-1 focus:ring-emerald-700 bg-white"
+                <div className="space-y-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Catatan Pesanan Pembelian:</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Instruksi pengiriman dari pabrik, tanggal kirim, syarat kemasan..."
+                      value={poForm.catatan}
+                      onChange={(e) => setPoForm((p) => ({ ...p, catatan: e.target.value }))}
+                      className="w-full p-2.5 border border-slate-200/80 rounded-xl focus:ring-1 focus:ring-emerald-700 bg-white"
+                    />
+                  </div>
+
+                  <FileUploadBukti
+                    label="Lampiran Dokumen PO / Penawaran Supplier"
+                    value={poForm.lampiran_url}
+                    onChange={(url) => setPoForm((p) => ({ ...p, lampiran_url: url }))}
+                    docType="po-beli"
+                    helpText="Upload foto surat pesanan atau berkas penawaran supplier."
                   />
                 </div>
 
@@ -2523,7 +2572,23 @@ export default function PurchaseModule({
                               {cols.noPenerimaan !== false && (
                                 <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                   <div className="flex items-center justify-between">
-                                    <span className="group-hover:underline">{ri.no_terima}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="group-hover:underline">{ri.no_terima}</span>
+                                      {ri.lampiran_url && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLightboxImage({ url: ri.lampiran_url, title: `Bukti Penerimaan Barang - ${ri.no_terima}` });
+                                          }}
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                          title="Lihat Foto Fisik Barang / Surat Jalan Supplier"
+                                        >
+                                          <Camera className="w-3 h-3 text-emerald-700" />
+                                          <span>Bukti</span>
+                                        </button>
+                                      )}
+                                    </div>
                                     <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                   </div>
                                 </td>
@@ -2760,15 +2825,26 @@ export default function PurchaseModule({
                 </table>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Keterangan Penerimaan Gudang:</label>
-                <textarea
-                  rows={2}
-                  placeholder="Catatan pemeriksa gudang, driver, nomor plat kendaraan..."
-                  value={riForm.keterangan}
-                  onChange={(e) => setRiForm((p) => ({ ...p, keterangan: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-200/80 rounded-xl bg-white"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Keterangan Penerimaan Gudang:</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Catatan pemeriksa gudang, driver, nomor plat kendaraan..."
+                    value={riForm.keterangan}
+                    onChange={(e) => setRiForm((p) => ({ ...p, keterangan: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-200/80 rounded-xl bg-white text-xs"
+                  />
+                </div>
+                <div>
+                  <FileUploadBukti
+                    label="Foto Surat Jalan Supplier / Fisik Barang Masuk"
+                    value={riForm.lampiran_url}
+                    onChange={(url) => setRiForm((p) => ({ ...p, lampiran_url: url }))}
+                    docType="ri-beli"
+                    helpText="Upload foto fisik surat jalan supplier atau kondisi barang saat dibongkar."
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -3043,7 +3119,23 @@ export default function PurchaseModule({
                               {cols.noFaktur !== false && (
                                 <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                   <div className="flex items-center justify-between">
-                                    <span className="group-hover:underline">{p.no_faktur}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="group-hover:underline">{p.no_faktur}</span>
+                                      {p.lampiran_url && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLightboxImage({ url: p.lampiran_url, title: `Bukti Faktur Pembelian - ${p.no_faktur}` });
+                                          }}
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                          title="Lihat Bukti Foto Nota/Faktur Supplier"
+                                        >
+                                          <Camera className="w-3 h-3 text-emerald-700" />
+                                          <span>Bukti</span>
+                                        </button>
+                                      )}
+                                    </div>
                                     <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                   </div>
                                 </td>
@@ -3330,14 +3422,24 @@ export default function PurchaseModule({
 
               {/* FOOTER TOTALS FB */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Catatan / Keterangan Tagihan:</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Catatan nomor rekening pabrik, instruksi transfer..."
-                    value={piForm.catatan}
-                    onChange={(e) => setPiForm((p) => ({ ...p, catatan: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-200/80 rounded-xl bg-white"
+                <div className="space-y-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Catatan / Keterangan Tagihan:</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Catatan nomor rekening pabrik, instruksi transfer..."
+                      value={piForm.catatan}
+                      onChange={(e) => setPiForm((p) => ({ ...p, catatan: e.target.value }))}
+                      className="w-full p-2.5 border border-slate-200/80 rounded-xl bg-white"
+                    />
+                  </div>
+
+                  <FileUploadBukti
+                    label="Foto Faktur Tagihan / Nota Fisik Supplier"
+                    value={piForm.lampiran_url}
+                    onChange={(url) => setPiForm((p) => ({ ...p, lampiran_url: url }))}
+                    docType="fb-beli"
+                    helpText="Upload foto fisik invoice, faktur pajak, atau nota dari supplier."
                   />
                 </div>
 
@@ -3557,7 +3659,23 @@ export default function PurchaseModule({
                               {cols.noBukti !== false && (
                                 <td className={`${densityClass} font-mono font-bold text-emerald-950 border-r border-slate-100/80`}>
                                   <div className="flex items-center justify-between">
-                                    <span className="group-hover:underline">{pp.no_bukti}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="group-hover:underline">{pp.no_bukti}</span>
+                                      {pp.lampiran_url && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLightboxImage({ url: pp.lampiran_url, title: `Bukti Pembayaran / Transfer - ${pp.no_bukti}` });
+                                          }}
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                                          title="Lihat Bukti Struk / Slip Transfer Bank"
+                                        >
+                                          <Camera className="w-3 h-3 text-emerald-700" />
+                                          <span>Bukti</span>
+                                        </button>
+                                      )}
+                                    </div>
                                     <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                                   </div>
                                 </td>
@@ -3779,15 +3897,26 @@ export default function PurchaseModule({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Catatan Bukti Pembayaran:</label>
-                <textarea
-                  rows={2}
-                  placeholder="Keterangan transfer, nomor referensi mutasi bank..."
-                  value={paymentForm.catatan}
-                  onChange={(e) => setPaymentForm((p) => ({ ...p, catatan: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-200/80 rounded-xl bg-white"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Catatan Bukti Pembayaran:</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Keterangan transfer, nomor referensi mutasi bank..."
+                    value={paymentForm.catatan}
+                    onChange={(e) => setPaymentForm((p) => ({ ...p, catatan: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-200/80 rounded-xl bg-white text-xs"
+                  />
+                </div>
+                <div>
+                  <FileUploadBukti
+                    label="Bukti Transfer Pembayaran ke Supplier"
+                    value={paymentForm.lampiran_url}
+                    onChange={(url) => setPaymentForm((p) => ({ ...p, lampiran_url: url }))}
+                    docType="pp-beli"
+                    helpText="Upload foto struk transfer / m-banking ke rekening supplier."
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -4375,6 +4504,13 @@ export default function PurchaseModule({
         }
         config={tableConfigs[activeConfigModal] || DEFAULT_TABLE_CONFIGS[activeConfigModal]}
         onSaveConfig={(newCfg) => handleSaveTableConfig(activeConfigModal, newCfg)}
+      />
+      {/* Lightbox Preview Modal for Bukti Foto Pembelian */}
+      <ImageLightboxModal
+        isOpen={!!lightboxImage}
+        imageUrl={lightboxImage?.url}
+        title={lightboxImage?.title || 'Bukti Transaksi Pembelian'}
+        onClose={() => setLightboxImage(null)}
       />
     </div>
   );
