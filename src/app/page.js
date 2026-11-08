@@ -488,6 +488,9 @@ export default function EternalPackagingERPWorkspace() {
   const [selectedDpSource, setSelectedDpSource] = useState('PO');
   const [soFlowDropdownOpen, setSoFlowDropdownOpen] = useState(false);
   const [sqFlowDropdownOpen, setSqFlowDropdownOpen] = useState(false);
+  const [doFlowDropdownOpen, setDoFlowDropdownOpen] = useState(false);
+  const [siFlowDropdownOpen, setSiFlowDropdownOpen] = useState(false);
+  const [payFlowDropdownOpen, setPayFlowDropdownOpen] = useState(false);
   const [soGetFromModalOpen, setSoGetFromModalOpen] = useState(false);
   const [piSearchQuery, setPiSearchQuery] = useState('');
   const [doGetFromModalOpen, setDoGetFromModalOpen] = useState(false);
@@ -763,6 +766,7 @@ export default function EternalPackagingERPWorkspace() {
 
   // 5. Penerimaan Penjualan (CR)
   const [payForm, setPayForm] = useState({
+    editingId: null,
     receiptNo: `CR.${new Date().getFullYear()}.${(new Date().getMonth() + 1).toString().padStart(2, '0')}.${new Date().getDate().toString().padStart(2, '0')}.0001`,
     date: new Date().toISOString().split('T')[0],
     customerId: '',
@@ -1558,6 +1562,27 @@ export default function EternalPackagingERPWorkspace() {
     }
     try {
       setLoading(true);
+
+      if (payForm.editingId) {
+        await supabase
+          .from('penerimaan_penjualan')
+          .update({
+            tanggal: payForm.date,
+            customer_id: payForm.customerId,
+            faktur_id: payForm.invoiceId,
+            akun_kas_id: payForm.bankAccountId,
+            total_bayar: Number(payForm.amount),
+            catatan: payForm.catatan,
+            lampiran_url: payForm.lampiran_url || null,
+          })
+          .eq('id', payForm.editingId);
+
+        showToast(`Penerimaan Pembayaran ${payForm.receiptNo} berhasil diperbarui!`, 'success', 'Perubahan Tersimpan');
+        await handleResetToNewPayment();
+        await loadData();
+        setViewModes((prev) => ({ ...prev, payment: 'list' }));
+        return;
+      }
       const docNo = await getNextDocNumber('CR', payForm.date);
 
       await supabase.from('penerimaan_penjualan').insert({
@@ -2225,11 +2250,12 @@ export default function EternalPackagingERPWorkspace() {
     setViewModes((p) => ({ ...p, si: 'form' }));
   };
 
-  // 5. CR: Form Baru Penerimaan Kas
+  // 5. CR: Form Baru & Edit Penerimaan Kas
   const handleResetToNewPayment = async () => {
     const today = new Date().toISOString().split('T')[0];
     const nextNo = await peekNextDocNumber('CR', today);
     setPayForm({
+      editingId: null,
       receiptNo: nextNo || `CR.${new Date().getFullYear()}.${(new Date().getMonth() + 1).toString().padStart(2, '0')}.${new Date().getDate().toString().padStart(2, '0')}.0001`,
       date: today,
       customerId: '',
@@ -2237,8 +2263,65 @@ export default function EternalPackagingERPWorkspace() {
       bankAccountId: accounts?.find((a) => a.kode_akun === '1102-01')?.id || accounts?.[0]?.id || '',
       amount: 0,
       catatan: '',
+      lampiran_url: '',
     });
     setViewModes((p) => ({ ...p, payment: 'form' }));
+  };
+
+  const handleOpenPayment = (p) => {
+    setPayForm({
+      editingId: p.id,
+      receiptNo: p.no_bukti,
+      date: p.tanggal,
+      customerId: p.customer_id,
+      invoiceId: p.faktur_id,
+      bankAccountId: p.akun_kas_id || accounts?.find((a) => a.kode_akun === '1102-01')?.id || accounts?.[0]?.id || '',
+      amount: Number(p.total_bayar || 0),
+      catatan: p.catatan || '',
+      lampiran_url: p.lampiran_url || '',
+    });
+    setViewModes((prev) => ({ ...prev, payment: 'form' }));
+  };
+
+  const handleDeletePayment = async (id, noDoc, fakturId, amount) => {
+    setLoading(true);
+    try {
+      const { error: pErr } = await supabase.from('penerimaan_penjualan').delete().eq('id', id);
+      if (pErr) throw pErr;
+
+      if (fakturId) {
+        const inv = salesInvoices.find((i) => i.id === fakturId);
+        if (inv) {
+          const newBayar = Math.max(0, Number(inv.bayar || 0) - Number(amount || 0));
+          const totalAkhir = Number(inv.total_akhir || 0);
+          const statusInv = newBayar >= totalAkhir ? 'LUNAS' : 'PIUTANG';
+          await supabase
+            .from('penjualan')
+            .update({
+              bayar: newBayar,
+              status: statusInv,
+            })
+            .eq('id', fakturId);
+        }
+      }
+
+      try {
+        await deleteJournalEntry('PENERIMAAN_PENJUALAN', noDoc);
+      } catch (jErr) {
+        console.warn('Skip delete journal:', jErr);
+      }
+
+      showToast(`Penerimaan Pembayaran ${noDoc} berhasil dihapus dari Supabase!`, 'success', 'Pelunasan Terhapus');
+      setDeleteConfirmDoc(null);
+      await handleResetToNewPayment();
+      await loadData();
+      setViewModes((prev) => ({ ...prev, payment: 'list' }));
+    } catch (err) {
+      console.error('Error delete payment:', err);
+      showToast('Gagal menghapus penerimaan: ' + err.message, 'error', 'Gagal Hapus');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Workflow Handlers: Complete Accurate Pipeline (PI -> PO -> DO/DP -> INV -> CR)
@@ -3601,7 +3684,20 @@ export default function EternalPackagingERPWorkspace() {
                                             </button>
                                           )}
                                         </div>
-                                        <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDeleteConfirmDoc({ type: 'PO', id: s.id, noDoc: s.no_pesanan });
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Hapus Pesanan Penjualan"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                          </button>
+                                          <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        </div>
                                       </div>
                                     </td>
                                   )}
@@ -3818,8 +3914,9 @@ export default function EternalPackagingERPWorkspace() {
                             min="0"
                             value={soForm.discountAmount || ''}
                             placeholder="0"
-                            onChange={(e) => setSoForm({ ...soForm, discountAmount: Number(e.target.value) || 0 })}
-                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white"
+                            onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setSoForm({ ...soForm, discountAmount: raw ? parseInt(raw, 10) : 0 }); }}
+                            value={soForm.discountAmount ? Number(soForm.discountAmount).toLocaleString("id-ID") : ""}
+                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
                           />
                         </div>
                       </div>
@@ -4230,7 +4327,20 @@ export default function EternalPackagingERPWorkspace() {
                                             </button>
                                           )}
                                         </div>
-                                        <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDeleteConfirmDoc({ type: 'SQ', id: q.id, noDoc: q.no_penawaran });
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Hapus Proforma Invoice"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                          </button>
+                                          <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        </div>
                                       </div>
                                     </td>
                                   )}
@@ -4392,8 +4502,9 @@ export default function EternalPackagingERPWorkspace() {
                             min="0"
                             value={quoteForm.discountAmount || ''}
                             placeholder="0"
-                            onChange={(e) => setQuoteForm({ ...quoteForm, discountAmount: Number(e.target.value) || 0 })}
-                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white"
+                            onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setQuoteForm({ ...quoteForm, discountAmount: raw ? parseInt(raw, 10) : 0 }); }}
+                            value={quoteForm.discountAmount ? Number(quoteForm.discountAmount).toLocaleString("id-ID") : ""}
+                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
                           />
                         </div>
                       </div>
@@ -4780,27 +4891,94 @@ export default function EternalPackagingERPWorkspace() {
                       <span>Cetak Surat Jalan</span>
                     </button>
                     {doForm.editingId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentDO = deliveryOrders.find((d) => d.id === doForm.editingId) || {
-                            id: doForm.editingId,
-                            no_surat_jalan: doForm.doNo,
-                            customer_id: doForm.customerId,
-                            pengiriman_pesanan_detail: doForm.items.map((i) => ({
-                              produk_id: i.id,
-                              qty: i.qty,
-                              produk: i,
-                            })),
-                          };
-                          flowDOtoSI(currentDO);
-                        }}
-                        className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-lg text-xs font-bold flex items-center space-x-1 transition shadow-2xs"
-                        title="Alirkan Surat Jalan ke Invoice Penjualan"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-blue-700" />
-                        <span>+ Terbitkan Invoice (SI)</span>
-                      </button>
+                      <>
+                        {/* PROSES ALUR DROPDOWN */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setDoFlowDropdownOpen(!doFlowDropdownOpen)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
+                          >
+                            <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                            <span>Proses Alur ▾</span>
+                          </button>
+                          {doFlowDropdownOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-20 cursor-default"
+                                onClick={() => setDoFlowDropdownOpen(false)}
+                              />
+                              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDoFlowDropdownOpen(false);
+                                    const currentDO = deliveryOrders.find((d) => d.id === doForm.editingId) || {
+                                      id: doForm.editingId,
+                                      no_surat_jalan: doForm.doNo,
+                                      customer_id: doForm.customerId,
+                                      pengiriman_pesanan_detail: doForm.items.map((i) => ({
+                                        produk_id: i.id,
+                                        qty: i.qty,
+                                        produk: i,
+                                      })),
+                                    };
+                                    flowDOtoSI(currentDO);
+                                  }}
+                                  className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold"
+                                >
+                                  <FileText className="w-4 h-4 text-blue-600" />
+                                  <div>
+                                    <div className="font-bold text-blue-950">+ Terbitkan Invoice (SI)</div>
+                                    <div className="text-[10px] text-slate-500">Alirkan ke Faktur Penjualan</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDoFlowDropdownOpen(false);
+                                    const d = deliveryOrders.find((x) => x.id === doForm.editingId);
+                                    if (d) {
+                                      setPrintDoc({
+                                        type: 'DO',
+                                        title: 'SURAT JALAN PENGIRIMAN',
+                                        noDoc: d.no_surat_jalan,
+                                        date: d.tanggal,
+                                        customer: d.customer,
+                                        items: d.pengiriman_pesanan_detail || [],
+                                        ekspedisi: d.ekspedisi,
+                                        catatan: d.catatan,
+                                        companySettings,
+                                      });
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
+                                >
+                                  <Printer className="w-4 h-4 text-slate-600" />
+                                  <span>Cetak Surat Jalan PDF</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* TOMBOL HAPUS DO */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDeleteConfirmDoc({
+                              type: 'DO',
+                              id: doForm.editingId,
+                              noDoc: doForm.doNo,
+                            })
+                          }
+                          className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+                          title="Hapus surat jalan ini dari Supabase"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Hapus DO</span>
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"
@@ -5023,7 +5201,20 @@ export default function EternalPackagingERPWorkspace() {
                                             </button>
                                           )}
                                         </div>
-                                        <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDeleteConfirmDoc({ type: 'DO', id: d.id, noDoc: d.no_surat_jalan });
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Hapus Surat Jalan"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                          </button>
+                                          <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        </div>
                                       </div>
                                     </td>
                                   )}
@@ -5266,24 +5457,95 @@ export default function EternalPackagingERPWorkspace() {
                       <span>Cetak Invoice</span>
                     </button>
                     {siForm.editingId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentSI = salesInvoices.find((i) => i.id === siForm.editingId) || {
-                            id: siForm.editingId,
-                            no_faktur: siForm.invoiceNo,
-                            customer_id: siForm.customerId,
-                            total_akhir: calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive).grandTotal,
-                            bayar: siForm.uangMuka || 0,
-                          };
-                          flowSItoPayment(currentSI);
-                        }}
-                        className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200 rounded-lg text-xs font-bold flex items-center space-x-1 transition shadow-2xs"
-                        title="Terima Pembayaran / Kas Masuk untuk Invoice Ini"
-                      >
-                        <Coins className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>+ Terima Pembayaran (CR)</span>
-                      </button>
+                      <>
+                        {/* PROSES ALUR DROPDOWN */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setSiFlowDropdownOpen(!siFlowDropdownOpen)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
+                          >
+                            <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                            <span>Proses Alur ▾</span>
+                          </button>
+                          {siFlowDropdownOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-20 cursor-default"
+                                onClick={() => setSiFlowDropdownOpen(false)}
+                              />
+                              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSiFlowDropdownOpen(false);
+                                    const currentSI = salesInvoices.find((i) => i.id === siForm.editingId) || {
+                                      id: siForm.editingId,
+                                      no_faktur: siForm.invoiceNo,
+                                      customer_id: siForm.customerId,
+                                      total_akhir: calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive).grandTotal,
+                                      bayar: siForm.uangMuka || 0,
+                                    };
+                                    flowSItoPayment(currentSI);
+                                  }}
+                                  className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold"
+                                >
+                                  <Coins className="w-4 h-4 text-emerald-600" />
+                                  <div>
+                                    <div className="font-bold text-emerald-950">+ Terima Pembayaran (CR)</div>
+                                    <div className="text-[10px] text-slate-500">Catat pelunasan piutang pelanggan</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSiFlowDropdownOpen(false);
+                                    const inv = salesInvoices.find((x) => x.id === siForm.editingId);
+                                    const cust = contacts.find((c) => c.id === siForm.customerId);
+                                    const totals = calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive);
+                                    setPrintDoc({
+                                      type: 'SI',
+                                      title: 'FAKTUR PENJUALAN',
+                                      noDoc: siForm.invoiceNo,
+                                      date: siForm.date,
+                                      customer: cust,
+                                      items: inv?.penjualan_detail || siForm.items,
+                                      total: totals.grandTotal,
+                                      subtotal: totals.subtotal,
+                                      diskon: totals.diskon,
+                                      ppn: totals.ppn,
+                                      uangMuka: siForm.uangMuka || 0,
+                                      catatan: siForm.catatan,
+                                      companySettings,
+                                    });
+                                  }}
+                                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
+                                >
+                                  <Printer className="w-4 h-4 text-slate-600" />
+                                  <span>Cetak Invoice PDF</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* TOMBOL HAPUS INVOICE */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDeleteConfirmDoc({
+                              type: 'SI',
+                              id: siForm.editingId,
+                              noDoc: siForm.invoiceNo,
+                            })
+                          }
+                          className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+                          title="Hapus Faktur Penjualan ini dari Supabase"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Hapus Invoice</span>
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"
@@ -5514,7 +5776,20 @@ export default function EternalPackagingERPWorkspace() {
                                             </button>
                                           )}
                                         </div>
-                                        <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDeleteConfirmDoc({ type: 'SI', id: i.id, noDoc: i.no_invoice });
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Hapus Invoice"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                          </button>
+                                          <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                        </div>
                                       </div>
                                     </td>
                                   )}
@@ -5710,8 +5985,9 @@ export default function EternalPackagingERPWorkspace() {
                             min="0"
                             value={siForm.discountAmount || ''}
                             placeholder="0"
-                            onChange={(e) => setSiForm({ ...siForm, discountAmount: Number(e.target.value) || 0 })}
-                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white"
+                            onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setSiForm({ ...siForm, discountAmount: raw ? parseInt(raw, 10) : 0 }); }}
+                            value={siForm.discountAmount ? Number(siForm.discountAmount).toLocaleString("id-ID") : ""}
+                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
                           />
                         </div>
                       </div>
@@ -5819,6 +6095,83 @@ export default function EternalPackagingERPWorkspace() {
 
                 {viewModes.payment === 'form' ? (
                   <div className="flex items-center space-x-2">
+                    {/* PROSES ALUR DROPDOWN */}
+                    {payForm.editingId && (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setPayFlowDropdownOpen(!payFlowDropdownOpen)}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
+                        >
+                          <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Proses Alur ▾</span>
+                        </button>
+                        {payFlowDropdownOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-20 cursor-default"
+                              onClick={() => setPayFlowDropdownOpen(false)}
+                            />
+                            <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPayFlowDropdownOpen(false);
+                                  const p = salesPayments.find((x) => x.id === payForm.editingId);
+                                  if (p) {
+                                    setPrintDoc({
+                                      type: 'CR',
+                                      title: 'BUKTI PENERIMAAN KAS / KUITANSI',
+                                      noDoc: p.no_bukti,
+                                      date: p.tanggal,
+                                      customer: p.customer,
+                                      items: [
+                                        {
+                                          nama: `Pelunasan Faktur ${p.faktur?.no_invoice || ''}`,
+                                          qty: 1,
+                                          satuan: 'Transaksi',
+                                          harga_jual: Number(p.total_bayar || 0),
+                                          total: Number(p.total_bayar || 0),
+                                        },
+                                      ],
+                                      total: p.total_bayar,
+                                      catatan: `Diterima melalui rekening ${p.akun?.nama_akun || 'Bank'}`,
+                                      companySettings,
+                                    });
+                                  }
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold"
+                              >
+                                <Printer className="w-4 h-4 text-slate-600" />
+                                <span>Cetak Kuitansi / Bukti Kas PDF</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TOMBOL HAPUS PENERIMAAN (CR) */}
+                    {payForm.editingId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteConfirmDoc({
+                            type: 'CR',
+                            id: payForm.editingId,
+                            noDoc: payForm.receiptNo,
+                            fakturId: payForm.invoiceId,
+                            amount: payForm.amount,
+                          })
+                        }
+                        className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+                        title="Hapus penerimaan pembayaran ini secara permanen dari Supabase"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Hapus Penerimaan</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={handleResetToNewPayment}
@@ -5833,7 +6186,7 @@ export default function EternalPackagingERPWorkspace() {
                       className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      <span>SIMPAN PELUNASAN (CR)</span>
+                      <span>{payForm.editingId ? 'SIMPAN PERUBAHAN (CR)' : 'SIMPAN PELUNASAN (CR)'}</span>
                     </button>
                   </div>
                 ) : (
@@ -5990,27 +6343,7 @@ export default function EternalPackagingERPWorkspace() {
                               displayedPayments.map((p, idx) => (
                                 <tr
                                   key={p.id}
-                                  onClick={() => {
-                                    setPrintDoc({
-                                      type: 'CR',
-                                      title: 'BUKTI PENERIMAAN KAS / KUITANSI',
-                                      noDoc: p.no_bukti,
-                                      date: p.tanggal,
-                                      customer: p.customer,
-                                      items: [
-                                        {
-                                          nama: `Pelunasan Faktur ${p.faktur?.no_invoice || ''}`,
-                                          qty: 1,
-                                          satuan: 'Transaksi',
-                                          harga_jual: Number(p.total_bayar || 0),
-                                          total: Number(p.total_bayar || 0),
-                                        },
-                                      ],
-                                      total: p.total_bayar,
-                                      catatan: `Diterima melalui rekening ${p.akun?.nama_akun || 'Bank'}`,
-                                      companySettings,
-                                    });
-                                  }}
+                                  onClick={() => handleOpenPayment(p)}
                                   className="hover:bg-emerald-50/50 transition-colors cursor-pointer group active:scale-[0.999]"
                                   title="Klik baris untuk mencetak kuitansi / bukti penerimaan kas"
                                 >
@@ -6173,13 +6506,28 @@ export default function EternalPackagingERPWorkspace() {
                       </select>
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">Nominal Diterima (Rp)</label>
-                      <input
-                        type="number"
-                        value={payForm.amount}
-                        onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg font-bold text-emerald-900"
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block font-bold text-slate-700">Nominal Diterima (Rp)</label>
+                        {Number(payForm.amount || 0) > 0 && (
+                          <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            Rp {Number(payForm.amount || 0).toLocaleString('id-ID')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
+                        <input
+                          type="text"
+                          value={payForm.amount ? Number(payForm.amount).toLocaleString('id-ID') : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, '');
+                            const val = raw ? parseInt(raw, 10) : 0;
+                            setPayForm({ ...payForm, amount: val });
+                          }}
+                          placeholder="0"
+                          className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-700 bg-white"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -9578,7 +9926,7 @@ export default function EternalPackagingERPWorkspace() {
             </div>
             <div>
               <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
-                Hapus {deleteConfirmDoc.type === 'PO' ? 'Pesanan Penjualan' : deleteConfirmDoc.type === 'DP' ? 'Uang Muka Penjualan' : deleteConfirmDoc.type === 'SQ' ? 'Proforma Invoice' : deleteConfirmDoc.type === 'DO' ? 'Surat Jalan' : 'Invoice'}?
+                Hapus {deleteConfirmDoc.type === 'PO' ? 'Pesanan Penjualan' : deleteConfirmDoc.type === 'DP' ? 'Uang Muka Penjualan' : deleteConfirmDoc.type === 'SQ' ? 'Proforma Invoice' : deleteConfirmDoc.type === 'DO' ? 'Surat Jalan' : deleteConfirmDoc.type === 'CR' ? 'Penerimaan Pembayaran' : 'Invoice'}?
               </h3>
               <p className="text-xs font-mono font-bold text-rose-800 mt-1 bg-rose-50 py-0.5 rounded border border-rose-200">
                 {deleteConfirmDoc.noDoc}
@@ -9603,6 +9951,7 @@ export default function EternalPackagingERPWorkspace() {
                   else if (deleteConfirmDoc.type === 'SQ') handleDeleteQuote(deleteConfirmDoc.id, deleteConfirmDoc.noDoc);
                   else if (deleteConfirmDoc.type === 'DO') handleDeleteDO(deleteConfirmDoc.id, deleteConfirmDoc.noDoc);
                   else if (deleteConfirmDoc.type === 'SI') handleDeleteSI(deleteConfirmDoc.id, deleteConfirmDoc.noDoc);
+                  else if (deleteConfirmDoc.type === 'CR') handleDeletePayment(deleteConfirmDoc.id, deleteConfirmDoc.noDoc, deleteConfirmDoc.fakturId, deleteConfirmDoc.amount);
                 }}
                 disabled={loading}
                 className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs transition shadow-xs flex items-center justify-center space-x-1"

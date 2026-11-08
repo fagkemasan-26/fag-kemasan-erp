@@ -175,6 +175,7 @@ export default function PurchaseModule({
   const [poFlowDropdownOpen, setPoFlowDropdownOpen] = useState(false);
   const [riFlowDropdownOpen, setRiFlowDropdownOpen] = useState(false);
   const [fbFlowDropdownOpen, setFbFlowDropdownOpen] = useState(false);
+  const [ppFlowDropdownOpen, setPpFlowDropdownOpen] = useState(false);
 
   // Modals & Popups
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
@@ -1967,7 +1968,20 @@ export default function PurchaseModule({
                                         </button>
                                       )}
                                     </div>
-                                    <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteConfirmDoc({ type: 'PO', id: po.id, noDoc: po.no_pesanan });
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Hapus PO Pembelian"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      </button>
+                                      <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    </div>
                                   </div>
                                 </td>
                               )}
@@ -2270,8 +2284,8 @@ export default function PurchaseModule({
                     <input
                       type="number"
                       min="0"
-                      value={poForm.discountAmount}
-                      onChange={(e) => setPoForm((p) => ({ ...p, discountAmount: Math.max(0, Number(e.target.value)) }))}
+                      value={poForm.discountAmount ? Number(poForm.discountAmount).toLocaleString("id-ID") : ""}
+                      onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setPoForm((p) => ({ ...p, discountAmount: raw ? parseInt(raw, 10) : 0 })); }}
                       className="w-32 py-1 px-2 border border-slate-200/80 rounded text-right font-mono bg-white font-bold"
                     />
                   </div>
@@ -2589,7 +2603,20 @@ export default function PurchaseModule({
                                         </button>
                                       )}
                                     </div>
-                                    <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteConfirmDoc({ type: 'RI', id: ri.id, noDoc: ri.no_terima });
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Hapus Penerimaan Barang"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      </button>
+                                      <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    </div>
                                   </div>
                                 </td>
                               )}
@@ -3136,7 +3163,20 @@ export default function PurchaseModule({
                                         </button>
                                       )}
                                     </div>
-                                    <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteConfirmDoc({ type: 'FB', id: p.id, noDoc: p.no_faktur });
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Hapus Faktur Pembelian"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      </button>
+                                      <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    </div>
                                   </div>
                                 </td>
                               )}
@@ -3455,8 +3495,8 @@ export default function PurchaseModule({
                     <input
                       type="number"
                       min="0"
-                      value={piForm.discountAmount}
-                      onChange={(e) => setPiForm((p) => ({ ...p, discountAmount: Math.max(0, Number(e.target.value)) }))}
+                      value={piForm.discountAmount ? Number(piForm.discountAmount).toLocaleString("id-ID") : ""}
+                      onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setPiForm((p) => ({ ...p, discountAmount: raw ? parseInt(raw, 10) : 0 })); }}
                       className="w-32 py-1 px-2 border border-slate-200/80 rounded text-right font-mono bg-white font-bold"
                     />
                   </div>
@@ -3532,6 +3572,61 @@ export default function PurchaseModule({
             <div className="flex items-center space-x-2">
               {viewModes.pp_beli === 'form' ? (
                 <>
+                  {/* PROSES ALUR DROPDOWN */}
+                  {paymentForm.editingId && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPpFlowDropdownOpen(!ppFlowDropdownOpen)}
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
+                      >
+                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Proses Alur ▾</span>
+                      </button>
+                      {ppFlowDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-20 cursor-default"
+                            onClick={() => setPpFlowDropdownOpen(false)}
+                          />
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPpFlowDropdownOpen(false);
+                                const pp = payments.find((x) => x.id === paymentForm.editingId);
+                                if (pp) setPdfModalDoc({ type: 'PP', data: pp });
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold"
+                            >
+                              <Printer className="w-4 h-4 text-slate-600" />
+                              <span>Cetak Bukti Pengeluaran Kas PDF</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TOMBOL HAPUS PP */}
+                  {paymentForm.editingId && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeleteConfirmDoc({
+                          type: 'PP',
+                          id: paymentForm.editingId,
+                          noDoc: paymentForm.receiptNo,
+                        })
+                      }
+                      className="px-3.5 py-1.5 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition flex items-center space-x-1"
+                      title="Batalkan pembayaran ini & kembalikan status hutang faktur"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Hapus PP</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleResetToNewPP}
@@ -3547,7 +3642,7 @@ export default function PurchaseModule({
                     className="px-4 py-2 bg-[#0A3828] hover:bg-[#07291D] text-white rounded-xl text-xs font-bold shadow-xs shadow-emerald-950/20 active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-950/20 flex items-center space-x-1.5 transition-all duration-200 ease-out cursor-pointer"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>SIMPAN PEMBAYARAN (PP)</span>
+                    <span>{paymentForm.editingId ? 'SIMPAN PERUBAHAN (PP)' : 'SIMPAN PEMBAYARAN (PP)'}</span>
                   </button>
                 </>
               ) : (
@@ -3676,7 +3771,20 @@ export default function PurchaseModule({
                                         </button>
                                       )}
                                     </div>
-                                    <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteConfirmDoc({ type: 'PP', id: pp.id, noDoc: pp.no_bukti });
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Hapus Pembayaran Hutang"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      </button>
+                                      <Edit className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                    </div>
                                   </div>
                                 </td>
                               )}
@@ -3880,14 +3988,28 @@ export default function PurchaseModule({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Nominal yang Dibayarkan (Rp):</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={paymentForm.amount}
-                    onChange={(e) => setPaymentForm((p) => ({ ...p, amount: Math.max(0, Number(e.target.value)) }))}
-                    className="w-full px-3 py-1.5 border border-slate-200/80 rounded-xl font-mono font-bold text-base text-emerald-950 bg-white"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">Nominal yang Dibayarkan (Rp):</label>
+                    {Number(paymentForm.amount || 0) > 0 && (
+                      <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        Rp {Number(paymentForm.amount || 0).toLocaleString('id-ID')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400">Rp</span>
+                    <input
+                      type="text"
+                      value={paymentForm.amount ? Number(paymentForm.amount).toLocaleString('id-ID') : ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, '');
+                        const val = raw ? parseInt(raw, 10) : 0;
+                        setPaymentForm((p) => ({ ...p, amount: val }));
+                      }}
+                      placeholder="0"
+                      className="w-full pl-10 pr-3 py-1.5 border border-slate-200/80 rounded-xl font-mono font-bold text-base text-emerald-950 bg-white"
+                    />
+                  </div>
                   <div className="flex justify-between items-center text-[11px] text-slate-500 mt-1">
                     <span>Terbilang:</span>
                     <strong className="text-emerald-900 font-mono">
