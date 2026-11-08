@@ -1768,7 +1768,7 @@ export default function PurchaseModule({
       {activeTab === 'po_beli' && (
         <div className="w-full flex-1 flex flex-col space-y-2">
           {/* TOOLBAR */}
-          <div className="flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] backdrop-blur-md">
+          <div className="relative z-40 flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
             <div className="flex items-center space-x-2.5">
               <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
                 <button
@@ -1832,8 +1832,8 @@ export default function PurchaseModule({
 
                       {poFlowDropdownOpen && (
                         <>
-                          <div className="fixed inset-0 z-20 cursor-default" onClick={() => setPoFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPoFlowDropdownOpen(false)} />
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={async () => {
@@ -2162,7 +2162,7 @@ export default function PurchaseModule({
 
           {/* FORM VIEW PO */}
           {viewModes.po_beli === 'form' && (
-            <div className="flex-1 flex flex-col min-h-0 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
+            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
               {/* HEADER FORM */}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
                 <div className="md:col-span-2">
@@ -2437,7 +2437,7 @@ export default function PurchaseModule({
       {activeTab === 'ri_beli' && (
         <div className="w-full flex-1 flex flex-col space-y-2">
           {/* TOOLBAR */}
-          <div className="flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] backdrop-blur-md">
+          <div className="relative z-40 flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
             <div className="flex items-center space-x-2.5">
               <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
                 <button
@@ -2511,8 +2511,8 @@ export default function PurchaseModule({
 
                       {riFlowDropdownOpen && (
                         <>
-                          <div className="fixed inset-0 z-20 cursor-default" onClick={() => setRiFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setRiFlowDropdownOpen(false)} />
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={async () => {
@@ -2806,7 +2806,7 @@ export default function PurchaseModule({
 
           {/* FORM VIEW RI */}
           {viewModes.ri_beli === 'form' && (
-            <div className="flex-1 flex flex-col min-h-0 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
+            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
                 <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">
@@ -3005,7 +3005,7 @@ export default function PurchaseModule({
       {activeTab === 'pi_beli' && (
         <div className="w-full flex-1 flex flex-col space-y-2">
           {/* TOOLBAR */}
-          <div className="flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] backdrop-blur-md">
+          <div className="relative z-40 flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
             <div className="flex items-center space-x-2.5">
               <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
                 <button
@@ -3079,8 +3079,8 @@ export default function PurchaseModule({
 
                       {fbFlowDropdownOpen && (
                         <>
-                          <div className="fixed inset-0 z-20 cursor-default" onClick={() => setFbFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setFbFlowDropdownOpen(false)} />
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={async () => {
@@ -3384,7 +3384,7 @@ export default function PurchaseModule({
 
           {/* FORM VIEW FB */}
           {viewModes.pi_beli === 'form' && (
-            <div className="flex-1 flex flex-col min-h-0 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
+            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
               <div className="grid grid-cols-1 md:grid-cols-6 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
                 <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">
@@ -3675,7 +3675,7 @@ export default function PurchaseModule({
       {activeTab === 'pp_beli' && (
         <div className="w-full flex-1 flex flex-col space-y-2">
           {/* TOOLBAR */}
-          <div className="flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] backdrop-blur-md">
+          <div className="relative z-40 flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
             <div className="flex items-center space-x-2.5">
               <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
                 <button
@@ -3728,10 +3728,10 @@ export default function PurchaseModule({
                       {ppFlowDropdownOpen && (
                         <>
                           <div
-                            className="fixed inset-0 z-20 cursor-default"
+                            className="fixed inset-0 z-40 cursor-default"
                             onClick={() => setPpFlowDropdownOpen(false)}
                           />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={() => {
@@ -3987,7 +3987,7 @@ export default function PurchaseModule({
 
           {/* FORM VIEW PP */}
           {viewModes.pp_beli === 'form' && (
-            <div className="flex-1 flex flex-col min-h-0 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-4 overflow-y-auto shadow-2xs text-xs">
+            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-4 overflow-y-auto shadow-2xs text-xs">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
                 <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">
@@ -4193,7 +4193,7 @@ export default function PurchaseModule({
       {activeTab === 'suppliers' && (
         <div className="w-full flex-1 flex flex-col space-y-2">
           {/* TOOLBAR */}
-          <div className="flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] backdrop-blur-md">
+          <div className="relative z-40 flex items-center justify-between px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
             <div className="flex items-center space-x-2.5">
               <button
                 type="button"
