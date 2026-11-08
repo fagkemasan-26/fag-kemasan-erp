@@ -141,6 +141,8 @@ export async function resetAllTransactions() {
 
     await supabase.from('jurnal_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('jurnal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('penyesuaian_persediaan_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('penyesuaian_persediaan').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('riwayat_stok').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('kas_transaksi').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 

@@ -356,6 +356,17 @@ export default function EternalPackagingERPWorkspace() {
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
+  // Filter Akun Kas & Bank untuk Pelunasan (Payment CR)
+  const kasAccounts = useMemo(() => {
+    return (accounts || []).filter(
+      (a) =>
+        a.tipe_akun === 'KAS' ||
+        a.tipe_akun === 'Kas & Bank' ||
+        a.kode_akun?.startsWith('1101') ||
+        a.kode_akun?.startsWith('1102')
+    );
+  }, [accounts]);
+
   // Realtime Running Balances per Account (Double-Entry PSAK Accurate)
   const accountBalances = useMemo(() => {
     const balances = {};

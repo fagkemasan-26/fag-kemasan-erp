@@ -240,7 +240,7 @@ export default function TableFilterToolbar({
                 }`}
               >
                 <option value="ALL">Akun Kas/Bank: Semua</option>
-                {bankAccounts.map((b) => (
+                {(bankAccounts || []).map((b) => (
                   <option key={b.id || b.kode_akun} value={b.id || b.kode_akun}>
                     {b.nama_akun}
                   </option>

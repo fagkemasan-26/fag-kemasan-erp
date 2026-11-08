@@ -159,20 +159,41 @@ export default function InventoryModule({
     if (!productToDelete) return;
     try {
       setIsDeleting(true);
+
+      // 1. Bersihkan riwayat penyesuaian stok atau mutasi terkait kemasan ini terlebih dahulu
+      await supabase.from('penyesuaian_persediaan_detail').delete().eq('produk_id', productToDelete.id);
+      await supabase.from('riwayat_stok').delete().eq('produk_id', productToDelete.id);
+
+      // 2. Eksekusi hapus produk
       const { error } = await supabase.from('produk').delete().eq('id', productToDelete.id);
       if (error) {
         if (error.code === '23503') {
-          alert(`Kemasan "${productToDelete.nama}" tidak dapat dihapus karena sudah memiliki riwayat transaksi.`);
+          // Jika ada transaksi penjualan / pembelian terkait
+          const forceConfirm = window.confirm(
+            `Kemasan "${productToDelete.nama}" terhubung dengan data transaksi pesanan/pembelian. Hapus kemasan ini beserta data detail terkait?`
+          );
+          if (forceConfirm) {
+            await supabase.from('pesanan_penjualan_detail').delete().eq('produk_id', productToDelete.id);
+            await supabase.from('penawaran_penjualan_detail').delete().eq('produk_id', productToDelete.id);
+            await supabase.from('pengiriman_pesanan_detail').delete().eq('produk_id', productToDelete.id);
+            await supabase.from('penjualan_detail').delete().eq('produk_id', productToDelete.id);
+            await supabase.from('pesanan_pembelian_detail').delete().eq('produk_id', productToDelete.id);
+            await supabase.from('pembelian_detail').delete().eq('produk_id', productToDelete.id);
+            const { error: err2 } = await supabase.from('produk').delete().eq('id', productToDelete.id);
+            if (err2) throw err2;
+          } else {
+            return;
+          }
         } else {
-          alert('Gagal menghapus kemasan: ' + error.message);
+          throw error;
         }
-        return;
       }
+
       setIsDeleteModalOpen(false);
       setProductToDelete(null);
       if (onRefresh) await onRefresh();
     } catch (err) {
-      alert('Terjadi kesalahan saat menghapus: ' + err.message);
+      alert('Terjadi kesalahan saat menghapus kemasan: ' + err.message);
     } finally {
       setIsDeleting(false);
     }
