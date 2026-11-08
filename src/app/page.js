@@ -502,6 +502,8 @@ export default function EternalPackagingERPWorkspace() {
   // Modals & UI Controls
   const [printDoc, setPrintDoc] = useState(null);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetIncludeProducts, setResetIncludeProducts] = useState(true);
+  const [resetIncludeContacts, setResetIncludeContacts] = useState(true);
   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
   const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false);
 
@@ -7084,6 +7086,7 @@ export default function EternalPackagingERPWorkspace() {
               companySettings={companySettings}
               onRefresh={loadData}
               onOpenNewProductModal={() => setIsNewProductModalOpen(true)}
+              showToast={showToast}
             />
           )}
 
@@ -8334,31 +8337,84 @@ export default function EternalPackagingERPWorkspace() {
       />
 
       {/* ============================================================ */}
-      {/* 5. MODAL RESET DEMO                                          */}
+      {/* 5. MODAL RESET & BERSIHKAN DATA DEMO (FRESH START BUKA TOKO) */}
       {/* ============================================================ */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 text-center border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-xs">
+              <RotateCcw className="w-7 h-7 stroke-[2]" />
             </div>
-            <h3 className="font-extrabold text-base text-slate-900">Bersihkan Data Demo?</h3>
-            <p className="text-xs text-slate-500">
-              Semua transaksi demo (PO, SQ, DO, Faktur, Jurnal, dan counter sequence) akan dihapus bersih agar siap dipakai buka toko nyata.
-            </p>
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900">Bersihkan &amp; Reset Semua Data</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Kembalikan sistem ke kondisi awal 100% bersih agar Anda dapat menginput katalog produk dan data asli FAG Kemasan dari awal.
+              </p>
+            </div>
+
+            {/* Checkbox Options */}
+            <div className="space-y-2 text-left">
+              <label className="flex items-start space-x-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition select-none">
+                <input
+                  type="checkbox"
+                  checked={resetIncludeProducts}
+                  onChange={(e) => setResetIncludeProducts(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                />
+                <div className="text-[11px]">
+                  <span className="font-bold text-slate-800 block">
+                    Kosongkan Master Barang &amp; Kemasan (Mulai dari 0 SKU)
+                  </span>
+                  <span className="text-slate-500 text-[10px]">
+                    Hapus seluruh contoh produk demo agar Anda bisa menginput data produk kemasan yang asli.
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start space-x-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition select-none">
+                <input
+                  type="checkbox"
+                  checked={resetIncludeContacts}
+                  onChange={(e) => setResetIncludeContacts(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                />
+                <div className="text-[11px]">
+                  <span className="font-bold text-slate-800 block">
+                    Kosongkan Kontak Pelanggan &amp; Supplier Contoh
+                  </span>
+                  <span className="text-slate-500 text-[10px]">
+                    Hapus seluruh kontak pelanggan/supplier contoh agar daftar kontak Anda bersih.
+                  </span>
+                </div>
+              </label>
+
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-800 leading-relaxed">
+                <strong>Data yang tetap aman:</strong> 49 Akun COA PSAK Standar, Pengaturan Profil Usaha FAG Kemasan, dan Akun Admin Login <code className="bg-emerald-100/80 px-1 py-0.5 rounded font-mono">fagkemasan@gmail.com</code> tetap tersimpan aman.
+              </div>
+            </div>
+
             <div className="flex space-x-2 pt-2">
               <button
+                type="button"
                 onClick={() => setIsResetModalOpen(false)}
-                className="flex-1 py-2 border border-slate-300 rounded-lg font-bold text-xs"
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl font-bold text-xs text-slate-700 hover:bg-slate-100 transition"
               >
                 Batal
               </button>
               <button
+                type="button"
                 onClick={async () => {
                   try {
                     setLoading(true);
-                    await resetAllTransactions();
-                    showToast('Sukses reset data transaksi demo! Counter dokumen siap kembali mulai dari 0001.', 'success', 'Reset Berhasil');
+                    await resetAllTransactions({
+                      resetProducts: resetIncludeProducts,
+                      resetContacts: resetIncludeContacts,
+                    });
+                    showToast(
+                      'Semua data berhasil dibersihkan! Anda kini siap memasukkan master produk & data asli dari awal.',
+                      'success',
+                      'Sistem Bersih 100%'
+                    );
                     setIsResetModalOpen(false);
                     await loadData();
                   } catch (e) {
@@ -8367,9 +8423,10 @@ export default function EternalPackagingERPWorkspace() {
                     setLoading(false);
                   }
                 }}
-                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs transition"
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-md transition flex items-center justify-center space-x-1.5"
               >
-                RESET SEKARANG
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>BERSIHKAN SEMUA DATA</span>
               </button>
             </div>
           </div>

@@ -39,6 +39,7 @@ export default function InventoryModule({
   companySettings = {},
   onRefresh = () => {},
   onOpenNewProductModal = () => {},
+  showToast = null,
 }) {
   const [activeSubTab, setActiveSubTab] = useState(activeTab);
 
@@ -154,46 +155,48 @@ export default function InventoryModule({
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cascadeDelete, setCascadeDelete] = useState(true);
+  const [deleteError, setDeleteError] = useState('');
 
   const handleDeleteProduct = async () => {
     if (!productToDelete) return;
     try {
       setIsDeleting(true);
+      setDeleteError('');
 
-      // 1. Bersihkan riwayat penyesuaian stok atau mutasi terkait kemasan ini terlebih dahulu
-      await supabase.from('penyesuaian_persediaan_detail').delete().eq('produk_id', productToDelete.id);
-      await supabase.from('riwayat_stok').delete().eq('produk_id', productToDelete.id);
+      // Jika cascadeDelete aktif (default), bersihkan seluruh detail transaksi terkait terlebih dahulu
+      if (cascadeDelete) {
+        await supabase.from('penyesuaian_persediaan_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('riwayat_stok').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('pesanan_penjualan_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('penawaran_penjualan_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('pengiriman_pesanan_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('penjualan_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('pesanan_pembelian_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('penerimaan_barang_detail').delete().eq('produk_id', productToDelete.id);
+        await supabase.from('pembelian_detail').delete().eq('produk_id', productToDelete.id);
+      }
 
-      // 2. Eksekusi hapus produk
+      // Hapus produk dari database
       const { error } = await supabase.from('produk').delete().eq('id', productToDelete.id);
       if (error) {
         if (error.code === '23503') {
-          // Jika ada transaksi penjualan / pembelian terkait
-          const forceConfirm = window.confirm(
-            `Kemasan "${productToDelete.nama}" terhubung dengan data transaksi pesanan/pembelian. Hapus kemasan ini beserta data detail terkait?`
-          );
-          if (forceConfirm) {
-            await supabase.from('pesanan_penjualan_detail').delete().eq('produk_id', productToDelete.id);
-            await supabase.from('penawaran_penjualan_detail').delete().eq('produk_id', productToDelete.id);
-            await supabase.from('pengiriman_pesanan_detail').delete().eq('produk_id', productToDelete.id);
-            await supabase.from('penjualan_detail').delete().eq('produk_id', productToDelete.id);
-            await supabase.from('pesanan_pembelian_detail').delete().eq('produk_id', productToDelete.id);
-            await supabase.from('pembelian_detail').delete().eq('produk_id', productToDelete.id);
-            const { error: err2 } = await supabase.from('produk').delete().eq('id', productToDelete.id);
-            if (err2) throw err2;
-          } else {
-            return;
-          }
-        } else {
-          throw error;
+          setDeleteError('Kemasan ini masih terhubung dengan transaksi. Pastikan opsi "Hapus seluruh riwayat data terkait" dicentang lalu klik Hapus lagi.');
+          return;
         }
+        throw error;
       }
 
       setIsDeleteModalOpen(false);
       setProductToDelete(null);
+      setCascadeDelete(true);
+      setDeleteError('');
+      if (showToast) {
+        showToast('Master kemasan berhasil dihapus dari sistem.', 'success', 'Kemasan Dihapus');
+      }
       if (onRefresh) await onRefresh();
     } catch (err) {
-      alert('Terjadi kesalahan saat menghapus kemasan: ' + err.message);
+      setDeleteError('Terjadi kesalahan saat menghapus kemasan: ' + (err.message || 'Error'));
     } finally {
       setIsDeleting(false);
     }
@@ -392,7 +395,8 @@ export default function InventoryModule({
   const handleSubmitAdjustment = async (e) => {
     e.preventDefault();
     if (!adjForm.items.length) {
-      alert('Harap masukkan minimal 1 barang untuk disesuaikan!');
+      if (showToast) showToast('Harap masukkan minimal 1 barang untuk disesuaikan!', 'warning', 'Validasi');
+      else alert('Harap masukkan minimal 1 barang untuk disesuaikan!');
       return;
     }
 
@@ -506,14 +510,22 @@ export default function InventoryModule({
         }
       }
 
-      alert(`Penyesuaian Persediaan ${adjForm.no_penyesuaian} berhasil disimpan & jurnal otomatis terbentuk!`);
+      if (showToast) {
+        showToast(`Penyesuaian Persediaan ${adjForm.no_penyesuaian} berhasil disimpan & jurnal otomatis terbentuk!`, 'success', 'Penyesuaian Berhasil');
+      } else {
+        alert(`Penyesuaian Persediaan ${adjForm.no_penyesuaian} berhasil disimpan & jurnal otomatis terbentuk!`);
+      }
       setAdjustmentView('list');
       await loadAdjustments();
       await loadMutationHistory();
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Error saving adjustment:', err);
-      alert('Gagal menyimpan penyesuaian: ' + err.message);
+      if (showToast) {
+        showToast('Gagal menyimpan penyesuaian: ' + err.message, 'error', 'Gagal');
+      } else {
+        alert('Gagal menyimpan penyesuaian: ' + err.message);
+      }
     } finally {
       setSubmittingAdjustment(false);
     }
@@ -1436,19 +1448,44 @@ export default function InventoryModule({
         }}
       />
 
-      {/* Modal Konfirmasi Hapus Produk */}
+      {/* Modal Konfirmasi Hapus Produk Modern (Dengan Opsi Centang Cascade) */}
       {isDeleteModalOpen && productToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 space-y-4 text-center border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 text-center border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-xs">
+              <Trash2 className="w-7 h-7 stroke-[2]" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-slate-900">Hapus Kemasan Ini?</h3>
+              <h3 className="font-extrabold text-base text-slate-900">Hapus Master Kemasan?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Apakah Anda yakin ingin menghapus master <strong className="text-slate-800">{productToDelete.nama}</strong> ({productToDelete.kode_sku})?
+                Apakah Anda yakin ingin menghapus <strong className="text-slate-800">{productToDelete.nama}</strong> ({productToDelete.kode_sku})?
               </p>
             </div>
+
+            {/* Checkbox Centang Hapus Seluruh Riwayat & Data Terkait */}
+            <label className="flex items-start space-x-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left cursor-pointer hover:bg-slate-100/70 transition select-none">
+              <input
+                type="checkbox"
+                checked={cascadeDelete}
+                onChange={(e) => setCascadeDelete(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+              />
+              <div className="text-[11px]">
+                <span className="font-bold text-slate-800 block">
+                  Hapus permanen beserta seluruh riwayat transaksi &amp; detail terkait
+                </span>
+                <span className="text-slate-500 text-[10px]">
+                  Centang opsi ini agar barang dapat langsung dihapus bersih dari sistem tanpa error relasi.
+                </span>
+              </div>
+            </label>
+
+            {deleteError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 text-left font-medium">
+                {deleteError}
+              </div>
+            )}
+
             <div className="flex space-x-2 pt-2">
               <button
                 type="button"
@@ -1456,8 +1493,10 @@ export default function InventoryModule({
                 onClick={() => {
                   setIsDeleteModalOpen(false);
                   setProductToDelete(null);
+                  setDeleteError('');
+                  setCascadeDelete(true);
                 }}
-                className="flex-1 py-2 border border-slate-300 rounded-xl font-bold text-xs text-slate-700 hover:bg-slate-100 transition"
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl font-bold text-xs text-slate-700 hover:bg-slate-100 transition"
               >
                 Batal
               </button>
@@ -1465,7 +1504,7 @@ export default function InventoryModule({
                 type="button"
                 disabled={isDeleting}
                 onClick={handleDeleteProduct}
-                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow transition flex items-center justify-center space-x-1"
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-md transition flex items-center justify-center space-x-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{isDeleting ? 'Menghapus...' : 'Hapus Sekarang'}</span>

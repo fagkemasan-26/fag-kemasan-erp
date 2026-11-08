@@ -120,9 +120,12 @@ export async function deleteJournalEntry(journalId) {
 
 /**
  * Reset Seluruh Transaksi Demo (Siap Pakai untuk Rilis Toko Asli)
+ * Mendukung opsi membersihkan data contoh produk dan kontak
  */
-export async function resetAllTransactions() {
+export async function resetAllTransactions(options = { resetProducts: true, resetContacts: true }) {
+  const { resetProducts = true, resetContacts = true } = options || {};
   try {
+    // 1. Bersihkan seluruh detail dan header transaksi penjualan
     await supabase.from('penawaran_penjualan_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('penawaran_penjualan').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
@@ -134,22 +137,28 @@ export async function resetAllTransactions() {
 
     await supabase.from('penjualan_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('penjualan').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // 2. Bersihkan seluruh detail dan header transaksi pembelian
+    await supabase.from('pembayaran_pembelian').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('penerimaan_barang_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('penerimaan_barang').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('pesanan_pembelian_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('pesanan_pembelian').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('pembelian_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('pembelian').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    await supabase.from('jurnal_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabase.from('jurnal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // 3. Bersihkan transaksi penyesuaian persediaan, mutasi kartu stok & kas
     await supabase.from('penyesuaian_persediaan_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('penyesuaian_persediaan').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('riwayat_stok').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('jurnal_detail').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('jurnal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('kas_transaksi').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // Reset sequence counter dokumen kembali ke 0001
+    // 4. Reset sequence counter nomor dokumen kembali ke 0001
     await supabase.from('nomor_dokumen_counter').delete().neq('prefix', 'DUMMY');
 
-    // Reset saldo akun buku besar (COA) ke Rp 0
+    // 5. Reset saldo akun buku besar (COA) ke Rp 0 (tetap pertahankan 49 akun standar PSAK)
     await supabase.from('akun').update({
       saldo_awal: 0,
       total_debit: 0,
@@ -157,12 +166,21 @@ export async function resetAllTransactions() {
       saldo_saat_ini: 0
     }).neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // Reset stok produk ke 0 pcs (siap untuk stok opname fisik)
-    await supabase.from('produk').update({ stok: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+    // 6. Master Kemasan / Produk
+    if (resetProducts) {
+      await supabase.from('produk').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    } else {
+      await supabase.from('produk').update({ stok: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+    }
+
+    // 7. Master Kontak (Pelanggan & Pemasok Contoh)
+    if (resetContacts) {
+      await supabase.from('kontak').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    }
 
     return { success: true };
   } catch (err) {
-    console.error('Gagal reset transaksi:', err);
+    console.error('Gagal reset transaksi & master data:', err);
     throw err;
   }
 }
