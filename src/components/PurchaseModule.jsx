@@ -263,6 +263,8 @@ export default function PurchaseModule({
     date: new Date().toISOString().split('T')[0],
     supplierId: '',
     purchaseId: '',
+    poId: null,
+    poNo: '',
     accountId: '',
     amount: 0,
     catatan: '',
@@ -734,9 +736,12 @@ export default function PurchaseModule({
       date: pp.tanggal,
       supplierId: pp.supplier_id || pp.pembelian?.supplier_id || '',
       purchaseId: pp.pembelian_id,
+      poId: null,
+      poNo: '',
       accountId: pp.akun_kas_id || accounts.find((a) => a.kode_akun === '1102-01')?.id || accounts[0]?.id || '',
       amount: Number(pp.total_bayar || 0),
       catatan: pp.catatan || '',
+      lampiran_url: pp.lampiran_url || '',
     });
     switchViewMode('pp_beli', 'form');
   };
@@ -750,9 +755,12 @@ export default function PurchaseModule({
       date: today,
       supplierId: '',
       purchaseId: '',
+      poId: null,
+      poNo: '',
       accountId: accounts.find((a) => a.kode_akun === '1102-01')?.id || accounts[0]?.id || '',
       amount: 0,
       catatan: '',
+      lampiran_url: '',
     });
     switchViewMode('pp_beli', 'form');
   };
@@ -1269,7 +1277,7 @@ export default function PurchaseModule({
 
       // 4. Posting Jurnal Double-Entry (GAAP/PSAK):
       // Debit: 1104-01 (Persediaan Barang Dagang)
-      // Debit: 2102-01 (PPN Masukan jika aktif)
+      // Debit: 1105-03 (PPN Masukan jika aktif)
       // Kredit: 2101-01 (Hutang Usaha Supplier) jika tempo, ATAU 1102-01 / 1101-01 jika COD
       const creditAccount = isCOD ? '1102-01' : '2101-01';
       const journalLines = [
@@ -1283,7 +1291,7 @@ export default function PurchaseModule({
 
       if (ppn > 0) {
         journalLines.push({
-          kodeAkun: '2102-01',
+          kodeAkun: '1105-03',
           debit: ppn,
           kredit: 0,
           catatan: 'PPN Masukan Pembelian (11%)',
@@ -1331,73 +1339,177 @@ export default function PurchaseModule({
     }
   };
 
-  // 4. SIMPAN PEMBAYARAN PEMBELIAN (PP - PELUNASAN HUTANG)
+  // 4. SIMPAN PEMBAYARAN PEMBELIAN (PP - PELUNASAN HUTANG / BAYAR PESANAN)
   const handleSavePayment = async () => {
     if (!paymentForm.supplierId) return onToast?.('Pilih supplier terlebih dahulu!', 'warning');
-    if (!paymentForm.purchaseId) return onToast?.('Pilih faktur pembelian yang akan dibayar!', 'warning');
+    if (!paymentForm.purchaseId && !paymentForm.poId) return onToast?.('Pilih faktur atau pesanan pembelian yang akan dibayar!', 'warning');
     if (Number(paymentForm.amount) <= 0) return onToast?.('Nominal pembayaran harus lebih dari Rp 0!', 'warning');
 
     try {
       setLoading(true);
       const docNo = paymentForm.editingId ? paymentForm.receiptNo : await getNextDocNumber('PP', paymentForm.date);
-      const targetPurchase = purchases.find((p) => p.id === paymentForm.purchaseId);
-      const totalInvoice = Number(targetPurchase?.total_akhir || targetPurchase?.total || 0);
-      const currentPaid = Number(targetPurchase?.bayar || 0);
-      const newPaid = currentPaid + Number(paymentForm.amount);
-      const isFull = newPaid >= totalInvoice;
+      const targetAccount = accounts.find((a) => a.id === paymentForm.accountId) || accounts.find((a) => a.kode_akun === '1102-01') || accounts[0];
+      const creditKodeAkun = targetAccount?.kode_akun || '1102-01';
 
-      // 1. Simpan Header Pembayaran
+      let purchaseId = paymentForm.purchaseId;
+      let refDocNo = '';
+      let supplierName = suppliers.find((s) => s.id === paymentForm.supplierId)?.nama || 'Supplier';
+
+      // KASUS 1: Bayar langsung dari Pesanan Pembelian (PO) yang belum difakturkan
+      if (!purchaseId && paymentForm.poId) {
+        const targetPO = purchaseOrders.find((p) => p.id === paymentForm.poId);
+        refDocNo = targetPO?.no_pesanan || paymentForm.poNo || 'PO';
+        supplierName = targetPO?.supplier?.nama || supplierName;
+        const today = paymentForm.date;
+        const newFBNo = await getNextDocNumber('FB', today);
+        const totalPO = Number(targetPO?.total || paymentForm.amount || 0);
+        const isFull = Number(paymentForm.amount) >= totalPO;
+
+        // A. Terbitkan Faktur Pembelian (FB) otomatis agar tercatat resmi
+        const { data: pHeader, error: hErr } = await supabase
+          .from('pembelian')
+          .insert({
+            no_faktur: newFBNo,
+            tanggal: today,
+            supplier_id: paymentForm.supplierId,
+            total: totalPO,
+            total_akhir: totalPO,
+            diskon: 0,
+            ppn_nominal: 0,
+            bayar: Number(paymentForm.amount),
+            status_bayar: isFull ? 'LUNAS' : 'HUTANG',
+            syarat_bayar: 'COD',
+            tgl_jatuh_tempo: today,
+            pesanan_pembelian_id: targetPO?.id || paymentForm.poId,
+            catatan: `Faktur Pembelian otomatis dari ${refDocNo} via Pembayaran ${docNo}`,
+          })
+          .select()
+          .single();
+        if (hErr) throw hErr;
+        purchaseId = pHeader.id;
+
+        // B. Simpan Detail Barang Pembelian
+        const poDetails = (targetPO?.pesanan_pembelian_detail || []).map((d) => ({
+          pembelian_id: pHeader.id,
+          produk_id: d.produk_id,
+          qty: Number(d.qty || 1),
+          harga_beli: Number(d.harga_beli || 0),
+          subtotal: Number(d.subtotal || 0),
+        }));
+        if (poDetails.length > 0) {
+          await supabase.from('pembelian_detail').insert(poDetails);
+        }
+
+        // C. Update status PO jadi SELESAI
+        await supabase
+          .from('pesanan_pembelian')
+          .update({ status: 'SELESAI' })
+          .eq('id', targetPO?.id || paymentForm.poId);
+
+        // D. Tambah stok persediaan (karena langsung dibeli & dibayar lunas)
+        for (const item of poDetails) {
+          const prod = products.find((p) => p.id === item.produk_id);
+          const currentStok = Number(prod?.stok || 0);
+          const newStok = currentStok + Number(item.qty || 0);
+          await supabase
+            .from('produk')
+            .update({
+              stok: newStok,
+              harga_beli: Number(item.harga_beli || prod?.harga_beli || 0),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', item.produk_id);
+
+          await supabase.from('riwayat_stok').insert({
+            produk_id: item.produk_id,
+            tipe: 'PEMBELIAN',
+            qty: Number(item.qty || 0),
+            stok_akhir: newStok,
+            keterangan: `Pembelian stok via Faktur ${newFBNo} (${refDocNo})`,
+            no_referensi: newFBNo,
+          });
+        }
+
+        // E. Catat Jurnal Akrual Pembelian Resmi (Debit Persediaan 1104-01, Kredit Hutang Usaha 2101-01)
+        await createJournalEntry({
+          tanggal: today,
+          tipeTransaksi: 'PEMBELIAN',
+          noReferensi: newFBNo,
+          keterangan: `Faktur Pembelian ${newFBNo} (Otomatis dari ${refDocNo})`,
+          details: [
+            {
+              kodeAkun: '1104-01',
+              debit: totalPO,
+              kredit: 0,
+              catatan: `Persediaan Kemasan Masuk via ${newFBNo}`,
+            },
+            {
+              kodeAkun: '2101-01',
+              debit: 0,
+              kredit: totalPO,
+              catatan: `Hutang Usaha ${supplierName} (${newFBNo})`,
+            },
+          ],
+        });
+      } else {
+        // KASUS 2: Bayar Faktur Pembelian (FB) yang sudah terdaftar
+        const targetPurchase = purchases.find((p) => p.id === purchaseId);
+        refDocNo = targetPurchase?.no_faktur || '';
+        supplierName = targetPurchase?.supplier?.nama || supplierName;
+        const totalInvoice = Number(targetPurchase?.total_akhir || targetPurchase?.total || 0);
+        const currentPaid = Number(targetPurchase?.bayar || 0);
+        const newPaid = currentPaid + Number(paymentForm.amount);
+        const isFull = newPaid >= totalInvoice;
+
+        const { error: pUpdErr } = await supabase
+          .from('pembelian')
+          .update({
+            bayar: newPaid,
+            status_bayar: isFull ? 'LUNAS' : 'HUTANG',
+          })
+          .eq('id', purchaseId);
+        if (pUpdErr) throw pUpdErr;
+      }
+
+      // Simpan Header Pembayaran ke Supabase
       const { error: payErr } = await supabase.from('pembayaran_pembelian').insert({
         no_bukti: docNo,
         tanggal: paymentForm.date,
         supplier_id: paymentForm.supplierId,
-        pembelian_id: paymentForm.purchaseId,
-        akun_kas_id: paymentForm.accountId,
+        pembelian_id: purchaseId,
+        akun_kas_id: targetAccount.id,
         total_bayar: Number(paymentForm.amount),
         metode_bayar: 'TRANSFER_BANK',
-        catatan: paymentForm.catatan || `Pelunasan Faktur ${targetPurchase?.no_faktur}`,
+        catatan: paymentForm.catatan || `Pelunasan Pembelian ${refDocNo}`,
         lampiran_url: paymentForm.lampiran_url || null,
       });
       if (payErr) throw payErr;
 
-      // 2. Update Faktur Pembelian (Status & Bayar)
-      const { error: pUpdErr } = await supabase
-        .from('pembelian')
-        .update({
-          bayar: newPaid,
-          status_bayar: isFull ? 'LUNAS' : 'HUTANG',
-        })
-        .eq('id', paymentForm.purchaseId);
-      if (pUpdErr) throw pUpdErr;
-
-      // 3. Jurnal Double-Entry Pembayaran Hutang
-      // Debit: 2101-01 (Hutang Usaha)
+      // Jurnal Double-Entry Standar PSAK / GAAP:
+      // Debit: 2101-01 (Hutang Usaha Supplier)
       // Kredit: Akun Kas/Bank terpilih (e.g. 1102-01 Bank BCA)
-      const targetAccount = accounts.find((a) => a.id === paymentForm.accountId);
-      const creditKodeAkun = targetAccount?.kode_akun || '1102-01';
-
       await createJournalEntry({
         tanggal: paymentForm.date,
         tipeTransaksi: 'PENGELUARAN_KAS',
         noReferensi: docNo,
-        keterangan: `Pembayaran Hutang Faktur ${targetPurchase?.no_faktur} (${docNo})`,
+        keterangan: `Pembayaran Pembelian ${refDocNo} (${docNo})`,
         details: [
           {
             kodeAkun: '2101-01',
             debit: Number(paymentForm.amount),
             kredit: 0,
-            catatan: `Pelunasan Hutang Usaha ${targetPurchase?.supplier?.nama || ''}`,
+            catatan: `Pelunasan Hutang Usaha ${supplierName}`,
           },
           {
             kodeAkun: creditKodeAkun,
             debit: 0,
             kredit: Number(paymentForm.amount),
-            catatan: `Pengeluaran via ${targetAccount?.nama_akun || 'Bank BCA'}`,
+            catatan: `Pengeluaran via ${targetAccount?.nama_akun || 'Kas/Bank'}`,
           },
         ],
       });
 
-      onToast?.(`Pembayaran Hutang ${docNo} sebesar Rp ${Number(paymentForm.amount).toLocaleString('id-ID')} berhasil dicatat & jurnal terposting!`, 'success');
+      onToast?.(`Pembayaran Pembelian ${docNo} sebesar Rp ${Number(paymentForm.amount).toLocaleString('id-ID')} berhasil dicatat & jurnal terposting!`, 'success');
       switchViewMode('pp_beli', 'list');
       await loadAllPurchaseData();
       onRefresh?.();
@@ -1591,6 +1703,8 @@ export default function PurchaseModule({
       date: today,
       supplierId: supplierId,
       purchaseId: purchaseId,
+      poId: null,
+      poNo: '',
       accountId: accounts.find((a) => a.kode_akun === '1102-01')?.id || accounts[0]?.id || '',
       amount: remaining,
       catatan: `Pelunasan Faktur Pembelian ${invoiceNo}`,
@@ -1599,6 +1713,32 @@ export default function PurchaseModule({
     handleSubTabSwitch('pp_beli');
     switchViewMode('pp_beli', 'form');
     onToast?.(`Faktur ${invoiceNo} berhasil dialirkan ke Pembayaran Pelunasan (Sisa: Rp ${remaining.toLocaleString('id-ID')})!`, 'info', 'Alur Diproses');
+  };
+
+  const handleFlowPOtoPP = async (po) => {
+    const today = new Date().toISOString().split('T')[0];
+    const nextNo = await peekNextDocNumber('PP', today);
+    const poNo = po.poNo || po.no_pesanan || '';
+    const supplierId = po.supplierId || po.supplier_id || '';
+    const poId = po.editingId || po.id || null;
+    const totalPO = Number(po.total || po.total_akhir || 0);
+
+    setPaymentForm({
+      editingId: null,
+      receiptNo: nextNo || `PP.${today.replace(/-/g, '.')}.0001`,
+      date: today,
+      supplierId: supplierId,
+      purchaseId: '',
+      poId: poId,
+      poNo: poNo,
+      accountId: accounts.find((a) => a.kode_akun === '1102-01')?.id || accounts[0]?.id || '',
+      amount: totalPO,
+      catatan: `Pembayaran Pelunasan Pesanan Pembelian ${poNo}`,
+      lampiran_url: '',
+    });
+    handleSubTabSwitch('pp_beli');
+    switchViewMode('pp_beli', 'form');
+    onToast?.(`Pesanan ${poNo} dialirkan ke Pembayaran Pelunasan (Nominal: Rp ${totalPO.toLocaleString('id-ID')})!`, 'info', 'Alur Diproses');
   };
 
   // Helper filter date
@@ -1884,6 +2024,29 @@ export default function PurchaseModule({
                             </button>
                             <button
                               type="button"
+                              onClick={async () => {
+                                setPoFlowDropdownOpen(false);
+                                const poTotals = calculatePOTotals();
+                                const currentPO = {
+                                  ...poForm,
+                                  id: poForm.editingId,
+                                  no_pesanan: poForm.poNo,
+                                  supplier_id: poForm.supplierId,
+                                  items: poForm.items,
+                                  total: poTotals.grandTotal,
+                                };
+                                await handleFlowPOtoPP(currentPO);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
+                            >
+                              <Coins className="w-4 h-4 text-amber-600" />
+                              <div>
+                                <div className="font-bold text-amber-950">+ Bayar Pembelian (PP)</div>
+                                <div className="text-[10px] text-slate-500">Bayar langsung pesanan ini via Kas/Bank</div>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 setPoFlowDropdownOpen(false);
                                 const p = purchaseOrders.find((x) => x.id === poForm.editingId) || {
@@ -2130,8 +2293,20 @@ export default function PurchaseModule({
                                       switchViewMode('ri_beli', 'form');
                                     }}
                                     className="apple-btn-secondary px-2 py-1 text-[10px] font-bold text-emerald-900"
+                                    title="Catat penerimaan barang masuk"
                                   >
                                     + RI
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      await handleFlowPOtoPP(po);
+                                    }}
+                                    className="apple-btn-secondary px-2 py-1 text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                                    title="Bayar langsung pesanan ini via Kas/Bank"
+                                  >
+                                    + Bayar
                                   </button>
                                 </td>
                               )}
@@ -3996,7 +4171,7 @@ export default function PurchaseModule({
                   <GoogleLiveSupplierSearch
                     suppliers={suppliers}
                     selectedSupplierId={paymentForm.supplierId}
-                    onSelectSupplier={(id) => setPaymentForm((p) => ({ ...p, supplierId: id, purchaseId: '' }))}
+                    onSelectSupplier={(id) => setPaymentForm((p) => ({ ...p, supplierId: id, purchaseId: '', poId: null, poNo: '' }))}
                     onOpenNewSupplierModal={handleOpenNewSupplier}
                     placeholder="Cari pemasok kemasan... (Nama pabrik, No. WA, Alamat)"
                   />
@@ -4033,73 +4208,146 @@ export default function PurchaseModule({
                 </div>
               </div>
 
-              {/* DAFTAR FAKTUR HUTANG YANG AKAN DILUNASI */}
+              {/* DAFTAR TAGIHAN (FAKTUR ATAU PESANAN) YANG AKAN DILUNASI */}
               <div className="space-y-1.5">
-                <label className="block font-bold text-slate-800">
-                  Pilih Faktur Pembelian yang Akan Dibayar:
-                </label>
-                <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-800">
+                    Pilih Faktur atau Pesanan Pembelian yang Akan Dibayar:
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Mendukung pembayaran dari Faktur (FB) maupun langsung dari Pesanan (PO)
+                  </span>
+                </div>
+                <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-100 font-bold text-slate-700 border-b border-slate-200/80">
                       <tr>
-                        <th className="py-2 px-2.5 w-10 text-center border-r border-slate-200">Pilih</th>
-                        <th className="py-2 px-2.5 border-r border-slate-200">No. Faktur Pembelian</th>
+                        <th className="py-2 px-2.5 w-12 text-center border-r border-slate-200">Pilih</th>
+                        <th className="py-2 px-2.5 border-r border-slate-200 w-24">Tipe</th>
+                        <th className="py-2 px-2.5 border-r border-slate-200">No. Dokumen</th>
                         <th className="py-2 px-2.5 border-r border-slate-200 w-28">Tanggal</th>
                         <th className="py-2 px-2.5 border-r border-slate-200 w-28">Jatuh Tempo</th>
-                        <th className="py-2 px-2.5 text-right border-r border-slate-200 w-32">Total Faktur</th>
+                        <th className="py-2 px-2.5 text-right border-r border-slate-200 w-32">Total Tagihan</th>
                         <th className="py-2 px-2.5 text-right border-r border-slate-200 w-32">Sudah Dibayar</th>
                         <th className="py-2 px-2.5 text-right w-36">Sisa Hutang</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {purchases
-                        .filter((p) => (!paymentForm.supplierId ? true : p.supplier_id === paymentForm.supplierId) && p.status_bayar === 'HUTANG')
-                        .map((inv) => {
-                          const total = Number(inv.total_akhir || inv.total || 0);
-                          const paid = Number(inv.bayar || 0);
-                          const remaining = Math.max(0, total - paid);
-                          const isSelected = paymentForm.purchaseId === inv.id;
-
-                          return (
-                            <tr
-                              key={inv.id}
-                              onClick={() =>
+                      {(() => {
+                        const unpaidInvoices = purchases
+                          .filter((p) => (!paymentForm.supplierId ? true : p.supplier_id === paymentForm.supplierId) && p.status_bayar === 'HUTANG')
+                          .map((inv) => {
+                            const total = Number(inv.total_akhir || inv.total || 0);
+                            const paid = Number(inv.bayar || 0);
+                            const remaining = Math.max(0, total - paid);
+                            const isSelected = paymentForm.purchaseId === inv.id;
+                            return {
+                              id: `fb-${inv.id}`,
+                              type: 'FB',
+                              typeLabel: 'Faktur (FB)',
+                              badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+                              docNo: inv.no_faktur,
+                              date: inv.tanggal,
+                              dueDate: inv.tgl_jatuh_tempo || '-',
+                              total,
+                              paid,
+                              remaining,
+                              isSelected,
+                              onSelect: () =>
                                 setPaymentForm((p) => ({
                                   ...p,
                                   supplierId: inv.supplier_id,
                                   purchaseId: inv.id,
+                                  poId: null,
+                                  poNo: '',
                                   amount: remaining,
                                   catatan: `Pelunasan Faktur ${inv.no_faktur}`,
-                                }))
-                              }
-                              className={`cursor-pointer transition-colors ${
-                                isSelected ? 'bg-emerald-50/90 font-semibold' : 'hover:bg-slate-50'
-                              }`}
-                            >
-                              <td className="py-2 px-2.5 text-center border-r border-slate-100">
-                                <input
-                                  type="radio"
-                                  name="selectedInvoice"
-                                  checked={isSelected}
-                                  onChange={() => {}}
-                                  className="text-emerald-700 focus:ring-emerald-600"
-                                />
-                              </td>
-                              <td className="py-2 px-2.5 font-mono font-bold text-emerald-900 border-r border-slate-100">{inv.no_faktur}</td>
-                              <td className="py-2 px-2.5 text-slate-600 border-r border-slate-100 font-mono">{inv.tanggal}</td>
-                              <td className="py-2 px-2.5 text-slate-600 border-r border-slate-100 font-mono">{inv.tgl_jatuh_tempo || '-'}</td>
-                              <td className="py-2 px-2.5 text-right font-mono border-r border-slate-100">
-                                Rp {total.toLocaleString('id-ID')}
-                              </td>
-                              <td className="py-2 px-2.5 text-right font-mono text-slate-500 border-r border-slate-100">
-                                Rp {paid.toLocaleString('id-ID')}
-                              </td>
-                              <td className="py-2 px-2.5 text-right font-mono font-bold text-amber-800">
-                                Rp {remaining.toLocaleString('id-ID')}
+                                })),
+                            };
+                          });
+
+                        const openPOs = purchaseOrders
+                          .filter((po) => (!paymentForm.supplierId ? true : po.supplier_id === paymentForm.supplierId) && (po.status !== 'SELESAI' || paymentForm.poId === po.id))
+                          .map((po) => {
+                            const total = Number(po.total || 0);
+                            const paid = 0;
+                            const remaining = total;
+                            const isSelected = paymentForm.poId === po.id;
+                            return {
+                              id: `po-${po.id}`,
+                              type: 'PO',
+                              typeLabel: 'Pesanan (PO)',
+                              badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+                              docNo: po.no_pesanan,
+                              date: po.tanggal,
+                              dueDate: po.tgl_jatuh_tempo || '-',
+                              total,
+                              paid,
+                              remaining,
+                              isSelected,
+                              onSelect: () =>
+                                setPaymentForm((p) => ({
+                                  ...p,
+                                  supplierId: po.supplier_id,
+                                  purchaseId: '',
+                                  poId: po.id,
+                                  poNo: po.no_pesanan,
+                                  amount: total,
+                                  catatan: `Pembayaran Pesanan ${po.no_pesanan}`,
+                                })),
+                            };
+                          });
+
+                        const allPayableItems = [...unpaidInvoices, ...openPOs];
+
+                        if (allPayableItems.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={8} className="py-8 text-center text-slate-400 bg-slate-50/50">
+                                <p className="font-semibold text-xs text-slate-600">Tidak ada faktur atau pesanan terbuka untuk dibayar.</p>
+                                <p className="text-[11px] text-slate-400 mt-0.5">Pilih supplier lain atau buat Pesanan Pembelian (PO) baru terlebih dahulu.</p>
                               </td>
                             </tr>
                           );
-                        })}
+                        }
+
+                        return allPayableItems.map((item) => (
+                          <tr
+                            key={item.id}
+                            onClick={item.onSelect}
+                            className={`cursor-pointer transition-colors ${
+                              item.isSelected ? 'bg-emerald-50/90 font-semibold' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <td className="py-2 px-2.5 text-center border-r border-slate-100">
+                              <input
+                                type="radio"
+                                name="selectedPayableItem"
+                                checked={item.isSelected}
+                                onChange={() => {}}
+                                className="text-emerald-700 focus:ring-emerald-600 cursor-pointer"
+                              />
+                            </td>
+                            <td className="py-2 px-2.5 border-r border-slate-100">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${item.badgeClass}`}>
+                                {item.typeLabel}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2.5 font-mono font-bold text-emerald-900 border-r border-slate-100">{item.docNo}</td>
+                            <td className="py-2 px-2.5 text-slate-600 border-r border-slate-100 font-mono">{item.date}</td>
+                            <td className="py-2 px-2.5 text-slate-600 border-r border-slate-100 font-mono">{item.dueDate}</td>
+                            <td className="py-2 px-2.5 text-right font-mono border-r border-slate-100">
+                              Rp {item.total.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-2 px-2.5 text-right font-mono text-slate-500 border-r border-slate-100">
+                              Rp {item.paid.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-2 px-2.5 text-right font-mono font-bold text-amber-800">
+                              Rp {item.remaining.toLocaleString('id-ID')}
+                            </td>
+                          </tr>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
