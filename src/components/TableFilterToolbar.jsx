@@ -217,7 +217,7 @@ export default function TableFilterToolbar({
               >
                 <option value="ALL">{contactLabel}: Semua</option>
                 {contacts
-                  .filter((c) => (isPurchase ? c.tipe === 'PEMASOK' || c.tipe === 'SUPPLIER' : c.tipe === 'PELANGGAN' || !c.tipe))
+                  .filter((c) => (isPurchase ? ['supplier', 'pemasok'].includes((c.tipe || '').toLowerCase()) : !c.tipe || c.tipe.toLowerCase() === 'pelanggan'))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.nama}

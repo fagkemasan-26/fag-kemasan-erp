@@ -17,13 +17,16 @@ export default function GoogleLiveCustomerSearch({
   const containerRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Base customer contacts (exclude suppliers)
+  const customerContacts = contacts.filter((c) => !c.tipe || c.tipe.toLowerCase() === 'pelanggan');
+
   // Find currently selected customer
   const selectedCustomer = contacts.find((c) => c.id === selectedCustomerId);
 
   // Filter customers by name, phone, email, address
   const filteredCustomers = query.trim() === ''
-    ? contacts.slice(0, 8)
-    : contacts.filter((c) => {
+    ? customerContacts.slice(0, 8)
+    : customerContacts.filter((c) => {
         const q = query.toLowerCase();
         const nameMatch = c.nama?.toLowerCase().includes(q);
         const phoneMatch = c.telepon?.toLowerCase().includes(q);

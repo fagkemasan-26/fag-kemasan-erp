@@ -8474,7 +8474,7 @@ export default function EternalPackagingERPWorkspace() {
         }}
         initialDoc={selectedDpOrder}
         initialSource={selectedDpSource || 'PO'}
-        customers={contacts.filter((c) => c.tipe === 'PELANGGAN' || !c.tipe)}
+        customers={contacts.filter((c) => !c.tipe || c.tipe.toLowerCase() === 'pelanggan')}
         salesOrders={salesOrders}
         salesInvoices={salesInvoices}
         accounts={accounts}

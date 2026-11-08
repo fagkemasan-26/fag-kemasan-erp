@@ -10,7 +10,7 @@ export default function QuickAddCustomerModal({ isOpen, onClose, onCustomerCreat
     telepon: '',
     email: '',
     alamat: '',
-    tipe: 'PELANGGAN',
+    tipe: 'pelanggan',
   });
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -35,7 +35,7 @@ export default function QuickAddCustomerModal({ isOpen, onClose, onCustomerCreat
           telepon: formData.telepon.trim(),
           email: formData.email.trim(),
           alamat: formData.alamat.trim(),
-          tipe: 'PELANGGAN',
+          tipe: 'pelanggan',
         })
         .select()
         .single();
@@ -44,7 +44,7 @@ export default function QuickAddCustomerModal({ isOpen, onClose, onCustomerCreat
 
       onCustomerCreated(data);
       onClose();
-      setFormData({ nama: '', telepon: '', email: '', alamat: '', tipe: 'PELANGGAN' });
+      setFormData({ nama: '', telepon: '', email: '', alamat: '', tipe: 'pelanggan' });
     } catch (err) {
       console.error('Error create customer:', err);
       setErrorMsg(err.message || 'Gagal menyimpan pelanggan');

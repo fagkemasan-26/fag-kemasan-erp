@@ -38,8 +38,9 @@ export default function CustomerInlineTable({
   const [savedFieldNotice, setSavedFieldNotice] = useState(null); // { id, field }
   const [contactToDelete, setContactToDelete] = useState(null); // Contact currently pending deletion confirmation
 
-  // Filter contacts by search
-  const filteredContacts = contacts.filter((c) => {
+  // Filter contacts by search & type (pelanggan only)
+  const customerContacts = contacts.filter((c) => !c.tipe || c.tipe.toLowerCase() === 'pelanggan');
+  const filteredContacts = customerContacts.filter((c) => {
     const q = searchTerm.toLowerCase();
     const nama = (c.nama || '').toLowerCase();
     const tel = (c.telepon || '').toLowerCase();
@@ -122,7 +123,7 @@ export default function CustomerInlineTable({
             Daftar Pelanggan FAG Kemasan
           </h2>
           <span className="bg-emerald-50 text-emerald-900 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded font-mono">
-            {contacts.length} Pelanggan
+            {customerContacts.length} Pelanggan
           </span>
           <span className="hidden md:inline text-[11px] text-slate-500">
             • Klik langsung pada sel untuk edit instan (Live Sync Supabase)
@@ -381,7 +382,7 @@ export default function CustomerInlineTable({
         {/* Bottom Status Bar - Edge to Edge Anchored */}
         <div className="h-8 bg-slate-50 border-t border-slate-200 px-3 flex items-center justify-between text-[11px] text-slate-500 font-medium select-none">
           <div className="flex items-center space-x-2">
-            <span>Total Pelanggan: <strong>{contacts.length}</strong></span>
+            <span>Total Pelanggan: <strong>{customerContacts.length}</strong></span>
             <span>•</span>
             <span>Ditampilkan: <strong>{filteredContacts.length}</strong></span>
           </div>
