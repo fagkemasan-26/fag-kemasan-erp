@@ -879,12 +879,18 @@ export default function InventoryModule({
                               )}
                               {cols.hargaBeli !== false && (
                                 <td className={`${py} text-right font-mono text-slate-600 border-r border-slate-100/80`}>
-                                  Rp {hargaBeli.toLocaleString('id-ID')}
+                                  {hargaBeli > 0 ? `Rp ${hargaBeli.toLocaleString('id-ID')}` : <span className="text-slate-400 font-normal italic text-[11px]">-</span>}
                                 </td>
                               )}
                               {cols.hargaJual !== false && (
                                 <td className={`${py} text-right font-mono font-bold text-slate-900 border-r border-slate-100/80`}>
-                                  Rp {hargaJual.toLocaleString('id-ID')}
+                                  {hargaJual > 0 ? (
+                                    `Rp ${hargaJual.toLocaleString('id-ID')}`
+                                  ) : (
+                                    <span className="text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded text-[11px] font-semibold">
+                                      Fleksibel
+                                    </span>
+                                  )}
                                 </td>
                               )}
                               {cols.totalValuasi !== false && (

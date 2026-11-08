@@ -245,8 +245,8 @@ export default function QuickAddProductModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.nama.trim() || !formData.harga_jual) {
-      setErrorMsg('Nama kemasan dan harga jual satuan wajib diisi!');
+    if (!formData.nama.trim()) {
+      setErrorMsg('Nama kemasan wajib diisi!');
       return;
     }
 
@@ -493,27 +493,34 @@ export default function QuickAddProductModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1 text-xs">Harga Beli / HPP Modal (Rp)</label>
+              <label className="block font-bold text-slate-700 mb-1 text-xs">
+                Harga Beli / HPP Modal (Rp) <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
+              </label>
               <input
                 type="number"
-                placeholder="2000"
+                min="0"
+                step="any"
+                placeholder="0 (opsional)"
                 value={formData.harga_beli}
                 onChange={(e) => setFormData({ ...formData, harga_beli: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 font-mono text-xs"
               />
+              <p className="text-[10px] text-slate-400 mt-0.5">Bisa kosong jika belum ada patokan HPP modal.</p>
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1 text-xs">
-                Harga Jual Kasir (Rp) <span className="text-rose-500">*</span>
+                Harga Jual Kasir (Rp) <span className="text-slate-400 font-normal text-[10px]">(Opsional / Fleksibel)</span>
               </label>
               <input
                 type="number"
-                required
-                placeholder="2800"
+                min="0"
+                step="any"
+                placeholder="0 (fleksibel per pesanan)"
                 value={formData.harga_jual}
                 onChange={(e) => setFormData({ ...formData, harga_jual: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-800 font-mono text-xs"
               />
+              <p className="text-[10px] text-slate-400 mt-0.5">Kosongkan jika harga custom / negosiasi per order.</p>
             </div>
           </div>
 

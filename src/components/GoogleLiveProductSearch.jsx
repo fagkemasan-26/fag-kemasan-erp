@@ -184,7 +184,7 @@ export default function GoogleLiveProductSearch({
 
                         <div className="flex items-center space-x-3 mt-0.5 text-[11px] text-slate-500">
                           <span>
-                            Harga: <strong className="text-slate-800">Rp {Number(p.harga_jual || 0).toLocaleString('id-ID')}</strong> / {p.satuan || 'Pcs'}
+                            Harga: <strong className="text-slate-800">{Number(p.harga_jual || 0) > 0 ? `Rp ${Number(p.harga_jual).toLocaleString('id-ID')}` : 'Fleksibel'}</strong> / {p.satuan || 'Pcs'}
                           </span>
                           <span>•</span>
                           <span className={`font-semibold ${isLowStock ? 'text-amber-600 font-bold' : 'text-emerald-700'}`}>
