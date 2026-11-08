@@ -30,6 +30,7 @@ import {
   Check,
   ExternalLink,
   Camera,
+  Workflow,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getNextDocNumber, peekNextDocNumber, createJournalEntry } from '../lib/accounting';
@@ -1414,117 +1415,190 @@ export default function PurchaseModule({
   const handleTakePOIntoRI = async (po) => {
     const today = new Date().toISOString().split('T')[0];
     const nextNo = await peekNextDocNumber('RI', today);
-    setRiForm((prev) => ({
-      ...prev,
+    const supplierId = po.supplierId || po.supplier_id || '';
+    const poNo = po.poNo || po.no_pesanan || '';
+    const poId = po.editingId || po.id || null;
+
+    const sourceItems = (po.items && po.items.length > 0)
+      ? po.items
+      : (po.pesanan_pembelian_detail || []).map((d) => {
+          const prod = products.find((p) => p.id === d.produk_id);
+          return {
+            id: d.produk_id,
+            kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
+            nama: d.produk?.nama || prod?.nama || '',
+            satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
+            qty: Number(d.qty || 1),
+            catatan: d.catatan || 'Kondisi Baik',
+          };
+        });
+
+    setRiForm({
       editingId: null,
-      riNo: nextNo || prev.riNo,
+      riNo: nextNo || `RI.${today.replace(/-/g, '.')}.0001`,
       date: today,
-      supplierId: po.supplier_id,
-      poId: po.id,
-      poNo: po.no_pesanan,
-      items: (po.pesanan_pembelian_detail || []).map((d) => {
-        const prod = products.find((p) => p.id === d.produk_id);
-        return {
-          id: d.produk_id,
-          kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
-          nama: d.produk?.nama || prod?.nama || '',
-          satuan: d.produk?.satuan || prod?.satuan || 'Pcs',
-          qty: Number(d.qty || 1),
-          catatan: 'Kondisi Baik',
-        };
-      }),
-      keterangan: `Penerimaan Barang dari Pesanan Pembelian ${po.no_pesanan}`,
-    }));
+      supplierId: supplierId,
+      poId: poId,
+      poNo: poNo,
+      supplierSJNo: '',
+      items: sourceItems.map((i) => ({
+        id: i.id,
+        kode_sku: i.kode_sku,
+        nama: i.nama,
+        satuan: i.satuan || 'Pcs',
+        qty: Number(i.qty || 1),
+        catatan: i.catatan || 'Kondisi Baik',
+      })),
+      keterangan: `Penerimaan Barang dari Pesanan Pembelian ${poNo}`,
+      lampiran_url: '',
+    });
     setTakeModalType(null);
-    onToast?.(`Data dari ${po.no_pesanan} berhasil disalin ke Penerimaan Barang!`, 'success');
+    onToast?.(`Pesanan ${poNo} berhasil dialirkan ke Penerimaan Barang (${nextNo})!`, 'success', 'Alur Diproses');
   };
 
   const handleTakeRIIntoFB = async (ri) => {
     const today = new Date().toISOString().split('T')[0];
     const nextNo = await peekNextDocNumber('FB', today);
+    const supplierId = ri.supplierId || ri.supplier_id || '';
+    const riNo = ri.riNo || ri.no_terima || '';
+    const riId = ri.editingId || ri.id || null;
+    const poId = ri.poId || ri.pesanan_pembelian_id || null;
     const defaultTerm = (syaratBayarList.find((t) => t.isDefault) || syaratBayarList[0])?.nama || 'Net 30';
     const dueDate = calculateDueDate(today, defaultTerm, syaratBayarList);
 
-    setPiForm((prev) => ({
-      ...prev,
+    const sourceItems = (ri.items && ri.items.length > 0)
+      ? ri.items
+      : (ri.penerimaan_barang_detail || []).map((d) => {
+          const prod = products.find((p) => p.id === d.produk_id);
+          return {
+            id: d.produk_id,
+            kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
+            nama: d.produk?.nama || prod?.nama || '',
+            satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
+            qty: Number(d.qty || 1),
+            harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
+            diskonPersen: 0,
+            diskonRp: 0,
+          };
+        });
+
+    setPiForm({
       editingId: null,
-      invoiceNo: nextNo || prev.invoiceNo,
+      invoiceNo: nextNo || `FB.${today.replace(/-/g, '.')}.0001`,
       date: today,
-      supplierId: ri.supplier_id,
-      riId: ri.id,
-      poId: ri.pesanan_pembelian_id || null,
-      supplierNo: ri.no_surat_jalan_supplier || '',
+      supplierId: supplierId,
+      riId: riId,
+      poId: poId,
+      supplierNo: ri.supplierSJNo || ri.no_surat_jalan_supplier || '',
       termin: defaultTerm,
       dueDate: dueDate,
-      items: (ri.penerimaan_barang_detail || []).map((d) => {
-        const prod = products.find((p) => p.id === d.produk_id);
+      discountAmount: 0,
+      ppnActive: false,
+      items: sourceItems.map((i) => {
+        const prod = products.find((p) => p.id === i.id);
+        const hb = Number(i.harga_beli || prod?.harga_beli || 0);
         return {
-          id: d.produk_id,
-          kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
-          nama: d.produk?.nama || prod?.nama || '',
-          satuan: d.produk?.satuan || prod?.satuan || 'Pcs',
-          qty: Number(d.qty || 1),
-          harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
-          diskonRp: 0,
+          id: i.id,
+          kode_sku: i.kode_sku || prod?.kode_sku || '',
+          nama: i.nama || prod?.nama || '',
+          satuan: i.satuan || prod?.satuan || 'Pcs',
+          qty: Number(i.qty || 1),
+          harga_beli: hb,
+          diskonPersen: Number(i.diskonPersen || 0),
+          diskonRp: Number(i.diskonRp || 0),
+          total: Math.round(Number(i.qty || 1) * hb),
+          catatan: i.catatan || '',
         };
       }),
-      catatan: `Faktur Pembelian berdasarkan Penerimaan Barang ${ri.no_terima}`,
-    }));
+      catatan: `Faktur Pembelian berdasarkan Penerimaan Barang ${riNo}`,
+      lampiran_url: '',
+    });
     setTakeModalType(null);
-    onToast?.(`Data dari Penerimaan ${ri.no_terima} berhasil disalin ke Faktur Beli!`, 'success');
+    onToast?.(`Penerimaan Barang ${riNo} berhasil dialirkan ke Faktur Beli (${nextNo})!`, 'success', 'Alur Diproses');
   };
 
   const handleTakePOIntoFB = async (po) => {
     const today = new Date().toISOString().split('T')[0];
     const nextNo = await peekNextDocNumber('FB', today);
+    const supplierId = po.supplierId || po.supplier_id || '';
+    const poNo = po.poNo || po.no_pesanan || '';
+    const poId = po.editingId || po.id || null;
     const poTerm = po.termin || po.syarat_bayar || (syaratBayarList.find((t) => t.isDefault) || syaratBayarList[0])?.nama || 'Net 30';
     const dueDate = calculateDueDate(today, poTerm, syaratBayarList);
 
-    setPiForm((prev) => ({
-      ...prev,
+    const sourceItems = (po.items && po.items.length > 0)
+      ? po.items
+      : (po.pesanan_pembelian_detail || []).map((d) => {
+          const prod = products.find((p) => p.id === d.produk_id);
+          return {
+            id: d.produk_id,
+            kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
+            nama: d.produk?.nama || prod?.nama || '',
+            satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
+            qty: Number(d.qty || 1),
+            harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
+            diskonPersen: Number(d.diskon_persen || d.diskonPersen || 0),
+            diskonRp: Number(d.diskon_rp || d.diskonRp || 0),
+            total: Number(d.subtotal || 0),
+            catatan: d.catatan || '',
+          };
+        });
+
+    setPiForm({
       editingId: null,
-      invoiceNo: nextNo || prev.invoiceNo,
+      invoiceNo: nextNo || `FB.${today.replace(/-/g, '.')}.0001`,
       date: today,
-      supplierId: po.supplier_id,
-      poId: po.id,
+      supplierId: supplierId,
+      poId: poId,
+      riId: null,
+      supplierNo: '',
       termin: poTerm,
       dueDate: dueDate,
-      items: (po.pesanan_pembelian_detail || []).map((d) => {
-        const prod = products.find((p) => p.id === d.produk_id);
-        return {
-          id: d.produk_id,
-          kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
-          nama: d.produk?.nama || prod?.nama || '',
-          satuan: d.produk?.satuan || prod?.satuan || 'Pcs',
-          qty: Number(d.qty || 1),
-          harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
-          diskonRp: 0,
-        };
-      }),
-      catatan: `Faktur Pembelian berdasarkan PO ${po.no_pesanan}`,
-    }));
+      discountAmount: Number(po.discountAmount || 0),
+      ppnActive: po.ppnActive !== undefined ? po.ppnActive : false,
+      items: sourceItems.map((i) => ({
+        id: i.id,
+        kode_sku: i.kode_sku,
+        nama: i.nama,
+        satuan: i.satuan || 'Pcs',
+        qty: Number(i.qty || 1),
+        harga_beli: Number(i.harga_beli || 0),
+        diskonPersen: Number(i.diskonPersen || 0),
+        diskonRp: Number(i.diskonRp || 0),
+        total: i.total !== undefined ? i.total : Math.round(Number(i.qty || 1) * Number(i.harga_beli || 0) - Number(i.diskonRp || 0)),
+        catatan: i.catatan || '',
+      })),
+      catatan: `Faktur Pembelian berdasarkan Pesanan ${poNo}`,
+      lampiran_url: '',
+    });
     setTakeModalType(null);
-    onToast?.(`Data dari ${po.no_pesanan} berhasil disalin ke Faktur Beli!`, 'success');
+    onToast?.(`Pesanan ${poNo} berhasil dialirkan ke Faktur Pembelian (${nextNo})!`, 'success', 'Alur Diproses');
   };
 
   const handleFlowFBtoPP = async (inv) => {
     const today = new Date().toISOString().split('T')[0];
     const nextNo = await peekNextDocNumber('PP', today);
-    const remaining = Math.max(0, Number(inv.total_akhir || inv.total || 0) - Number(inv.bayar || 0));
+    const invoiceNo = inv.invoiceNo || inv.no_faktur || '';
+    const supplierId = inv.supplierId || inv.supplier_id || '';
+    const purchaseId = inv.editingId || inv.id || null;
+    const totalInv = Number(inv.total_akhir || inv.total || (inv.items ? inv.items.reduce((acc, i) => acc + (i.total || (i.qty * i.harga_beli)), 0) : 0));
+    const paid = Number(inv.bayar || 0);
+    const remaining = Math.max(0, totalInv - paid);
 
     setPaymentForm({
       editingId: null,
-      receiptNo: nextNo || `PP.${new Date().getFullYear()}.${(new Date().getMonth() + 1).toString().padStart(2, '0')}.${new Date().getDate().toString().padStart(2, '0')}.0001`,
+      receiptNo: nextNo || `PP.${today.replace(/-/g, '.')}.0001`,
       date: today,
-      supplierId: inv.supplier_id,
-      purchaseId: inv.id,
+      supplierId: supplierId,
+      purchaseId: purchaseId,
       accountId: accounts.find((a) => a.kode_akun === '1102-01')?.id || accounts[0]?.id || '',
       amount: remaining,
-      catatan: `Pelunasan Faktur ${inv.no_faktur || inv.invoiceNo}`,
+      catatan: `Pelunasan Faktur Pembelian ${invoiceNo}`,
+      lampiran_url: '',
     });
     handleSubTabSwitch('pp_beli');
     switchViewMode('pp_beli', 'form');
-    onToast?.(`Faktur ${inv.no_faktur || inv.invoiceNo} siap dilunasi (Sisa Hutang: Rp ${remaining.toLocaleString('id-ID')})`, 'info');
+    onToast?.(`Faktur ${invoiceNo} berhasil dialirkan ke Pembayaran Pelunasan (Sisa: Rp ${remaining.toLocaleString('id-ID')})!`, 'info', 'Alur Diproses');
   };
 
   // Helper filter date
@@ -1743,33 +1817,33 @@ export default function PurchaseModule({
                     <span>Form Baru</span>
                   </button>
 
-                  {/* ALUR TRANSAKSI ACCURATE (JIKA EDITING PO) */}
+                  {/* PROSES ALUR TRANSAKSI (JIKA EDITING PO) */}
                   {poForm.editingId && (
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setPoFlowDropdownOpen(!poFlowDropdownOpen)}
-                        className="px-3.5 py-1.5 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-sm flex items-center space-x-1 transition-all duration-200 ease-out cursor-pointer shadow-2xs"
-                        title="Lanjutkan ke Penerimaan Barang atau Faktur Pembelian"
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
+                        title="Lanjutkan proses alur transaksi pesanan pembelian"
                       >
-                        <Layers className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>Alur Transaksi</span>
-                        <ChevronDown className="w-3 h-3 ml-0.5 text-emerald-600" />
+                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Proses Alur ▾</span>
                       </button>
 
                       {poFlowDropdownOpen && (
                         <>
                           <div className="fixed inset-0 z-20 cursor-default" onClick={() => setPoFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left">
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={async () => {
                                 setPoFlowDropdownOpen(false);
-                                const currentPO = purchaseOrders.find((p) => p.id === poForm.editingId) || {
+                                const currentPO = {
+                                  ...poForm,
                                   id: poForm.editingId,
                                   no_pesanan: poForm.poNo,
                                   supplier_id: poForm.supplierId,
-                                  pesanan_pembelian_detail: poForm.items.map((i) => ({ produk_id: i.id, qty: i.qty, produk: i })),
+                                  items: poForm.items,
                                 };
                                 await handleTakePOIntoRI(currentPO);
                                 handleSubTabSwitch('ri_beli');
@@ -1787,11 +1861,14 @@ export default function PurchaseModule({
                               type="button"
                               onClick={async () => {
                                 setPoFlowDropdownOpen(false);
-                                const currentPO = purchaseOrders.find((p) => p.id === poForm.editingId) || {
+                                const currentPO = {
+                                  ...poForm,
                                   id: poForm.editingId,
                                   no_pesanan: poForm.poNo,
                                   supplier_id: poForm.supplierId,
-                                  pesanan_pembelian_detail: poForm.items.map((i) => ({ produk_id: i.id, qty: i.qty, harga_beli: i.harga_beli, produk: i })),
+                                  items: poForm.items,
+                                  discountAmount: poForm.discountAmount,
+                                  ppnActive: poForm.ppnActive,
                                 };
                                 await handleTakePOIntoFB(currentPO);
                                 handleSubTabSwitch('pi_beli');
@@ -1809,7 +1886,13 @@ export default function PurchaseModule({
                               type="button"
                               onClick={() => {
                                 setPoFlowDropdownOpen(false);
-                                const p = purchaseOrders.find((x) => x.id === poForm.editingId);
+                                const p = purchaseOrders.find((x) => x.id === poForm.editingId) || {
+                                  ...poForm,
+                                  id: poForm.editingId,
+                                  no_pesanan: poForm.poNo,
+                                  supplier: suppliers.find((s) => s.id === poForm.supplierId),
+                                  pesanan_pembelian_detail: poForm.items.map((i) => ({ ...i, produk: i, subtotal: i.total })),
+                                };
                                 if (p) setPdfModalDoc({ type: 'PO', data: p });
                               }}
                               className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
@@ -2413,35 +2496,35 @@ export default function PurchaseModule({
                     <span>Ambil (PO) ▾</span>
                   </button>
 
-                  {/* ALUR TRANSAKSI ACCURATE (JIKA EDITING RI) */}
+                  {/* PROSES ALUR TRANSAKSI (JIKA EDITING RI) */}
                   {riForm.editingId && (
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setRiFlowDropdownOpen(!riFlowDropdownOpen)}
-                        className="px-3.5 py-1.5 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-sm flex items-center space-x-1 transition-all duration-200 ease-out cursor-pointer shadow-2xs"
-                        title="Lanjutkan ke Faktur Pembelian atau Cetak Surat Terima"
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
+                        title="Lanjutkan proses alur transaksi penerimaan barang"
                       >
-                        <Layers className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>Alur Transaksi</span>
-                        <ChevronDown className="w-3 h-3 ml-0.5 text-emerald-600" />
+                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Proses Alur ▾</span>
                       </button>
 
                       {riFlowDropdownOpen && (
                         <>
                           <div className="fixed inset-0 z-20 cursor-default" onClick={() => setRiFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left">
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={async () => {
                                 setRiFlowDropdownOpen(false);
-                                const currentRI = goodsReceipts.find((r) => r.id === riForm.editingId) || {
+                                const currentRI = {
+                                  ...riForm,
                                   id: riForm.editingId,
                                   no_terima: riForm.riNo,
                                   supplier_id: riForm.supplierId,
                                   no_surat_jalan_supplier: riForm.supplierSJNo,
                                   pesanan_pembelian_id: riForm.poId,
-                                  penerimaan_barang_detail: riForm.items.map((i) => ({ produk_id: i.id, qty: i.qty, produk: i })),
+                                  items: riForm.items,
                                 };
                                 await handleTakeRIIntoFB(currentRI);
                                 handleSubTabSwitch('pi_beli');
@@ -2459,7 +2542,13 @@ export default function PurchaseModule({
                               type="button"
                               onClick={() => {
                                 setRiFlowDropdownOpen(false);
-                                const r = goodsReceipts.find((x) => x.id === riForm.editingId);
+                                const r = goodsReceipts.find((x) => x.id === riForm.editingId) || {
+                                  ...riForm,
+                                  id: riForm.editingId,
+                                  no_terima: riForm.riNo,
+                                  supplier: suppliers.find((s) => s.id === riForm.supplierId),
+                                  penerimaan_barang_detail: riForm.items.map((i) => ({ ...i, produk: i })),
+                                };
                                 if (r) setPdfModalDoc({ type: 'RI', data: r });
                               }}
                               className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
@@ -2975,34 +3064,35 @@ export default function PurchaseModule({
                     <span>Ambil (RI / PO) ▾</span>
                   </button>
 
-                  {/* ALUR TRANSAKSI ACCURATE (JIKA EDITING FB) */}
+                  {/* PROSES ALUR TRANSAKSI (JIKA EDITING FB) */}
                   {piForm.editingId && (
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setFbFlowDropdownOpen(!fbFlowDropdownOpen)}
-                        className="px-3.5 py-1.5 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-sm flex items-center space-x-1 transition-all duration-200 ease-out cursor-pointer shadow-2xs"
-                        title="Lanjutkan ke Pelunasan Hutang atau Cetak Faktur"
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
+                        title="Lanjutkan proses alur transaksi faktur pembelian"
                       >
-                        <Layers className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>Alur Transaksi</span>
-                        <ChevronDown className="w-3 h-3 ml-0.5 text-emerald-600" />
+                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Proses Alur ▾</span>
                       </button>
 
                       {fbFlowDropdownOpen && (
                         <>
                           <div className="fixed inset-0 z-20 cursor-default" onClick={() => setFbFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left">
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={async () => {
                                 setFbFlowDropdownOpen(false);
-                                const currentFB = purchases.find((p) => p.id === piForm.editingId) || {
+                                const currentFB = {
+                                  ...piForm,
                                   id: piForm.editingId,
                                   no_faktur: piForm.invoiceNo,
                                   supplier_id: piForm.supplierId,
                                   total_akhir: calculateFBTotals().grandTotal,
                                   bayar: piForm.bayar || 0,
+                                  items: piForm.items,
                                 };
                                 await handleFlowFBtoPP(currentFB);
                               }}
@@ -3018,7 +3108,13 @@ export default function PurchaseModule({
                               type="button"
                               onClick={() => {
                                 setFbFlowDropdownOpen(false);
-                                const inv = purchases.find((x) => x.id === piForm.editingId);
+                                const inv = purchases.find((x) => x.id === piForm.editingId) || {
+                                  ...piForm,
+                                  id: piForm.editingId,
+                                  no_faktur: piForm.invoiceNo,
+                                  supplier: suppliers.find((s) => s.id === piForm.supplierId),
+                                  faktur_pembelian_detail: piForm.items.map((i) => ({ ...i, produk: i, subtotal: i.total })),
+                                };
                                 if (inv) setPdfModalDoc({ type: 'FB', data: inv });
                               }}
                               className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
