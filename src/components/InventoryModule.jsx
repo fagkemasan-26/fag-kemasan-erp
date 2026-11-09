@@ -537,8 +537,8 @@ export default function InventoryModule({
 
   // Metrics Calculations
   const totalSKU = products.length;
-  const totalFisik = products.reduce((acc, p) => acc + Number(p.stok || 0), 0);
-  const totalValuasi = products.reduce((acc, p) => acc + (Number(p.stok || 0) * Number(p.harga_beli || 0)), 0);
+  const totalFisik = products.reduce((acc, p) => acc + Math.max(0, Number(p.stok || 0)), 0);
+  const totalValuasi = products.reduce((acc, p) => acc + (Math.max(0, Number(p.stok || 0)) * Number(p.harga_beli || 0)), 0);
   const lowStockCount = products.filter((p) => Number(p.stok || 0) <= Number(p.min_stok || 5)).length;
 
   // Unique / registered categories for filter toolbar
@@ -828,7 +828,7 @@ export default function InventoryModule({
                           const isLow = stokNum <= minStok;
                           const hargaBeli = Number(p.harga_beli || 0);
                           const hargaJual = Number(p.harga_jual || 0);
-                          const totalVal = stokNum * hargaBeli;
+                          const totalVal = Math.max(0, stokNum) * hargaBeli;
 
                           return (
                             <tr
@@ -894,8 +894,14 @@ export default function InventoryModule({
                                 </td>
                               )}
                               {cols.totalValuasi !== false && (
-                                <td className={`${py} text-right font-mono font-black text-emerald-950 border-r border-slate-100/80`}>
-                                  Rp {totalVal.toLocaleString('id-ID')}
+                                <td className={`${py} text-right font-mono font-black border-r border-slate-100/80 ${stokNum < 0 ? 'text-amber-800' : 'text-emerald-950'}`}>
+                                  {stokNum < 0 ? (
+                                    <span className="text-[11px] font-sans font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">
+                                      Indent (Kurang Stok)
+                                    </span>
+                                  ) : (
+                                    `Rp ${totalVal.toLocaleString('id-ID')}`
+                                  )}
                                 </td>
                               )}
                               <td className={`${py} text-center`} onClick={(e) => e.stopPropagation()}>
