@@ -1251,29 +1251,36 @@ export default function PurchaseModule({
       }));
       await supabase.from('pembelian_detail').insert(details);
 
-      // 3. Jika TIDAK dibuat dari Penerimaan Barang (RI), tambah stok fisik dan catat mutasi
-      if (!piForm.riId) {
+      // 3. Penyesuaian Stok (Accurate Online / ERP Parity):
+      // Catatan: Supabase memiliki database trigger `trg_pembelian_tambah_stok` yang otomatis menambah stok saat pembelian_detail di-insert.
+      // - Kasus A: Jika Faktur Pembelian (FB) dibuat DARI Penerimaan Barang (RI), stok SUDAH masuk ke gudang saat RI diterbitkan!
+      //   Maka trigger database yang terlanjur menambah stok harus kita batalkan (revert) agar tidak dobel hitung!
+      // - Kasus B: Jika Faktur Pembelian (FB) dibuat LANGSUNG (tanpa RI), trigger database sudah otomatis menambah stok dan mencatat riwayat_stok.
+      if (piForm.riId) {
         for (const item of piForm.items) {
-          const prod = products.find((p) => p.id === item.id);
-          const currentStok = Number(prod?.stok || 0);
-          const newStok = currentStok + Number(item.qty || 0);
+          const { data: curProd } = await supabase.from('produk').select('stok').eq('id', item.id).single();
+          const revertedStok = Math.max(0, Number(curProd?.stok || 0) - Number(item.qty || 0));
           await supabase
             .from('produk')
             .update({
-              stok: newStok,
-              harga_beli: Number(item.harga_beli || prod?.harga_beli || 0),
+              stok: revertedStok,
               updated_at: new Date().toISOString(),
             })
             .eq('id', item.id);
 
-          await supabase.from('riwayat_stok').insert({
-            produk_id: item.id,
-            tipe: 'PEMBELIAN',
-            qty: Number(item.qty || 0),
-            stok_akhir: newStok,
-            keterangan: `Pembelian stok via Faktur ${docNo}`,
-            no_referensi: docNo,
-          });
+          // Hapus baris duplikasi mutasi dari trigger untuk no_faktur ini
+          await supabase.from('riwayat_stok').delete().eq('no_referensi', docNo).eq('produk_id', item.id);
+        }
+      } else {
+        // Direct FB: update harga_beli master produk jika ada harga terbaru
+        for (const item of piForm.items) {
+          await supabase
+            .from('produk')
+            .update({
+              harga_beli: Number(item.harga_beli || 0),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', item.id);
         }
       }
 
@@ -1408,28 +1415,17 @@ export default function PurchaseModule({
           .update({ status: 'SELESAI' })
           .eq('id', targetPO?.id || paymentForm.poId);
 
-        // D. Tambah stok persediaan (karena langsung dibeli & dibayar lunas)
+        // D. Stok persediaan:
+        // Saat pembelian_detail di-insert di atas, trigger PostgreSQL `trg_pembelian_tambah_stok`
+        // otomatis menambah stok dan mencatat riwayat_stok. Cukup update harga_beli master jika perlu.
         for (const item of poDetails) {
-          const prod = products.find((p) => p.id === item.produk_id);
-          const currentStok = Number(prod?.stok || 0);
-          const newStok = currentStok + Number(item.qty || 0);
           await supabase
             .from('produk')
             .update({
-              stok: newStok,
-              harga_beli: Number(item.harga_beli || prod?.harga_beli || 0),
+              harga_beli: Number(item.harga_beli || 0),
               updated_at: new Date().toISOString(),
             })
             .eq('id', item.produk_id);
-
-          await supabase.from('riwayat_stok').insert({
-            produk_id: item.produk_id,
-            tipe: 'PEMBELIAN',
-            qty: Number(item.qty || 0),
-            stok_akhir: newStok,
-            keterangan: `Pembelian stok via Faktur ${newFBNo} (${refDocNo})`,
-            no_referensi: newFBNo,
-          });
         }
 
         // E. Catat Jurnal Akrual Pembelian Resmi (Debit Persediaan 1104-01, Kredit Hutang Usaha 2101-01)

@@ -1445,28 +1445,22 @@ export default function EternalPackagingERPWorkspace() {
       }));
       await supabase.from('penjualan_detail').insert(details);
 
-      // ACCURATE ONLINE LOGIC:
-      // 1. Jika Faktur dibuat TANPA Surat Jalan (DO) (misal: langsung dari SO atau Penjualan Langsung),
-      // maka stok fisik berkurang dan dicatat di riwayat_stok.
-      // Jika Faktur dibuat DARI Surat Jalan (DO), stok SUDAH dipotong saat DO terbit -> tidak dipotong ulang!
-      if (!siForm.doId) {
+      // ACCURATE ONLINE / GAAP PARITY UNTUK STOK PENJUALAN:
+      // Catatan: Trigger PostgreSQL `trg_penjualan_kurang_stok` otomatis memotong stok saat penjualan_detail di-insert.
+      // - Kasus A: Jika Faktur Penjualan (SI) dibuat DARI Surat Jalan (DO), stok fisik SUDAH keluar dari gudang saat DO terbit!
+      //   Maka potongan otomatis dari trigger harus kita kembalikan (revert) agar tidak dobel potong!
+      // - Kasus B: Jika Faktur Penjualan (SI) dibuat LANGSUNG (tanpa DO / kasir langsung), trigger database sudah otomatis memotong stok dan mencatat riwayat_stok.
+      if (siForm.doId) {
         for (const item of siForm.items) {
-          const prod = products.find((p) => p.id === item.id);
-          const currentStok = Number(prod?.stok || 0);
-          const newStok = Math.max(0, currentStok - Number(item.qty || 0));
+          const { data: curProd } = await supabase.from('produk').select('stok').eq('id', item.id).single();
+          const restoredStok = Number(curProd?.stok || 0) + Number(item.qty || 0);
           await supabase
             .from('produk')
-            .update({ stok: newStok, updated_at: new Date().toISOString() })
+            .update({ stok: restoredStok, updated_at: new Date().toISOString() })
             .eq('id', item.id);
 
-          await supabase.from('riwayat_stok').insert({
-            produk_id: item.id,
-            tipe: 'PENJUALAN',
-            qty: -Number(item.qty || 0),
-            stok_akhir: newStok,
-            keterangan: `Penjualan langsung via Faktur ${docNo}`,
-            no_referensi: docNo,
-          });
+          // Hapus baris duplikasi mutasi dari trigger untuk no_invoice ini
+          await supabase.from('riwayat_stok').delete().eq('no_referensi', docNo).eq('produk_id', item.id);
         }
       }
 
