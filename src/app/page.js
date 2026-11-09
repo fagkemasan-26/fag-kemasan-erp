@@ -722,6 +722,7 @@ export default function EternalPackagingERPWorkspace() {
     poCustomer: '',
     items: [],
     discountAmount: 0,
+    shippingCost: 0,
     ppnActive: false,
     catatan: '',
     lampiran_url: '',
@@ -738,6 +739,7 @@ export default function EternalPackagingERPWorkspace() {
     customerId: '',
     items: [],
     discountAmount: 0,
+    shippingCost: 0,
     ppnActive: false,
     catatan: '',
     lampiran_url: '',
@@ -771,6 +773,7 @@ export default function EternalPackagingERPWorkspace() {
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     items: [],
     discountAmount: 0,
+    shippingCost: 0,
     ppnActive: false,
     uangMuka: 0,
     catatan: '',
@@ -1089,13 +1092,14 @@ export default function EternalPackagingERPWorkspace() {
   };
 
   // Calculations
-  const calculateTotals = (items, discountAmount, ppnActive, ppnRateOverride) => {
+  const calculateTotals = (items, discountAmount, ppnActive, ppnRateOverride, shippingCost = 0) => {
     const subtotal = items.reduce((acc, i) => acc + (i.total || i.qty * i.harga_jual || 0), 0);
     const rate = Number(ppnRateOverride ?? companySettings?.ppnPersen ?? 11) / 100;
     const ppn = ppnActive ? Math.round(subtotal * rate) : 0;
-    const grandTotal = Math.max(0, subtotal - Number(discountAmount || 0) + ppn);
+    const shipping = Number(shippingCost || 0);
+    const grandTotal = Math.max(0, subtotal - Number(discountAmount || 0) + ppn + shipping);
     const totalHPP = items.reduce((acc, i) => acc + i.qty * (i.harga_beli || 0), 0);
-    return { subtotal, ppn, grandTotal, totalHPP };
+    return { subtotal, ppn, grandTotal, totalHPP, shipping };
   };
 
   // ========================================================
@@ -1109,7 +1113,7 @@ export default function EternalPackagingERPWorkspace() {
 
     try {
       setLoading(true);
-      const { grandTotal } = calculateTotals(soForm.items, soForm.discountAmount, soForm.ppnActive);
+      const { grandTotal } = calculateTotals(soForm.items, soForm.discountAmount, soForm.ppnActive, null, soForm.shippingCost);
 
       // JIKA SEDANG MENGEDIT DOKUMEN YANG SUDAH ADA
       if (soForm.editingId) {
@@ -1189,7 +1193,7 @@ export default function EternalPackagingERPWorkspace() {
 
     try {
       setLoading(true);
-      const { grandTotal } = calculateTotals(quoteForm.items, quoteForm.discountAmount, quoteForm.ppnActive);
+      const { grandTotal } = calculateTotals(quoteForm.items, quoteForm.discountAmount, quoteForm.ppnActive, null, quoteForm.shippingCost);
 
       if (quoteForm.editingId) {
         const { error: qErr } = await supabase
@@ -1362,10 +1366,12 @@ export default function EternalPackagingERPWorkspace() {
 
     try {
       setLoading(true);
-      const { subtotal, ppn, grandTotal, totalHPP } = calculateTotals(
+      const { subtotal, ppn, grandTotal, totalHPP, shipping } = calculateTotals(
         siForm.items,
         siForm.discountAmount,
-        siForm.ppnActive
+        siForm.ppnActive,
+        null,
+        siForm.shippingCost
       );
       const isCOD = siForm.termin === 'COD';
 
@@ -1520,6 +1526,14 @@ export default function EternalPackagingERPWorkspace() {
         kredit: subtotal,
         catatan: 'Pendapatan Penjualan Kemasan',
       });
+      if (shipping > 0) {
+        lines.push({
+          kodeAkun: '4104-01', // Pendapatan Ongkos Kirim / Ekspedisi
+          debit: 0,
+          kredit: shipping,
+          catatan: 'Pendapatan Ongkos Kirim / Ekspedisi',
+        });
+      }
       if (ppn > 0) {
         lines.push({
           kodeAkun: '2102-01', // Hutang PPN (PPN Keluaran)
@@ -2083,24 +2097,32 @@ export default function EternalPackagingERPWorkspace() {
 
   // 1. PO: Buka untuk Edit vs Form Baru
   const handleOpenSO = (order) => {
+    const rawItems = (order.pesanan_penjualan_detail || []).map((d) => ({
+      id: d.produk_id,
+      kode_sku: d.produk?.kode_sku || '',
+      nama: d.produk?.nama || '',
+      satuan: d.satuan || d.produk?.satuan || 'Pcs',
+      qty: Number(d.qty || 0),
+      harga_jual: Number(d.harga_jual || 0),
+      harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
+      diskonPersen: Number(d.diskon_persen || 0),
+      total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
+    }));
+    const sub = rawItems.reduce((acc, i) => acc + (Number(i.total) || 0), 0);
+    const disc = Number(order.diskon || 0);
+    const ppn = Number(order.ppn_nominal || 0);
+    const total = Number(order.total || 0);
+    const inferredShipping = Math.max(0, total - (sub - disc + ppn));
+
     setSoForm({
       editingId: order.id,
       soNo: order.no_pesanan,
       date: order.tanggal,
       customerId: order.customer_id,
       poCustomer: order.no_po_customer || '',
-      items: (order.pesanan_penjualan_detail || []).map((d) => ({
-        id: d.produk_id,
-        kode_sku: d.produk?.kode_sku || '',
-        nama: d.produk?.nama || '',
-        satuan: d.satuan || d.produk?.satuan || 'Pcs',
-        qty: Number(d.qty || 0),
-        harga_jual: Number(d.harga_jual || 0),
-        harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
-        diskonPersen: Number(d.diskon_persen || 0),
-        total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
-      })),
-      discountAmount: Number(order.diskon || 0),
+      items: rawItems,
+      discountAmount: disc,
+      shippingCost: inferredShipping,
       ppnActive: Boolean(order.ppn_nominal && Number(order.ppn_nominal) > 0),
       catatan: order.catatan || '',
       lampiran_url: order.lampiran_url || '',
@@ -2122,6 +2144,7 @@ export default function EternalPackagingERPWorkspace() {
       poCustomer: '',
       items: [],
       discountAmount: 0,
+      shippingCost: 0,
       ppnActive: Boolean(companySettings.ppnAktifDefault),
       catatan: '',
       lampiran_url: '',
@@ -2134,23 +2157,31 @@ export default function EternalPackagingERPWorkspace() {
 
   // 2. SQ: Buka untuk Edit vs Form Baru
   const handleOpenQuote = (quote) => {
+    const rawItems = (quote.penawaran_penjualan_detail || []).map((d) => ({
+      id: d.produk_id,
+      kode_sku: d.produk?.kode_sku || '',
+      nama: d.produk?.nama || '',
+      satuan: d.satuan || d.produk?.satuan || 'Pcs',
+      qty: Number(d.qty || 0),
+      harga_jual: Number(d.harga_jual || 0),
+      harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
+      diskonPersen: Number(d.diskon_persen || 0),
+      total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
+    }));
+    const sub = rawItems.reduce((acc, i) => acc + (Number(i.total) || 0), 0);
+    const disc = Number(quote.diskon || 0);
+    const ppn = Number(quote.ppn_nominal || 0);
+    const total = Number(quote.total || 0);
+    const inferredShipping = Math.max(0, total - (sub - disc + ppn));
+
     setQuoteForm({
       editingId: quote.id,
       quoteNo: quote.no_penawaran,
       date: quote.tanggal,
       customerId: quote.customer_id,
-      items: (quote.penawaran_penjualan_detail || []).map((d) => ({
-        id: d.produk_id,
-        kode_sku: d.produk?.kode_sku || '',
-        nama: d.produk?.nama || '',
-        satuan: d.satuan || d.produk?.satuan || 'Pcs',
-        qty: Number(d.qty || 0),
-        harga_jual: Number(d.harga_jual || 0),
-        harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
-        diskonPersen: Number(d.diskon_persen || 0),
-        total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
-      })),
-      discountAmount: Number(quote.diskon || 0),
+      items: rawItems,
+      discountAmount: disc,
+      shippingCost: inferredShipping,
       ppnActive: Boolean(quote.ppn_nominal && Number(quote.ppn_nominal) > 0),
       catatan: quote.catatan || '',
       lampiran_url: quote.lampiran_url || '',
@@ -2169,6 +2200,7 @@ export default function EternalPackagingERPWorkspace() {
       customerId: '',
       items: [],
       discountAmount: 0,
+      shippingCost: 0,
       ppnActive: Boolean(companySettings.ppnAktifDefault),
       catatan: '',
       lampiran_url: '',
@@ -2222,6 +2254,23 @@ export default function EternalPackagingERPWorkspace() {
 
   // 4. SI: Buka untuk Edit vs Form Baru
   const handleOpenSI = (invoice) => {
+    const rawItems = (invoice.penjualan_detail || []).map((d) => ({
+      id: d.produk_id,
+      kode_sku: d.produk?.kode_sku || '',
+      nama: d.produk?.nama || '',
+      satuan: d.satuan || d.produk?.satuan || 'Pcs',
+      qty: Number(d.qty || 0),
+      harga_jual: Number(d.harga_jual || 0),
+      harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
+      diskonPersen: Number(d.diskon_persen || 0),
+      total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
+    }));
+    const sub = rawItems.reduce((acc, i) => acc + (Number(i.total) || 0), 0);
+    const disc = Number(invoice.diskon || 0);
+    const ppn = Number(invoice.ppn_nominal || 0);
+    const total = Number(invoice.total_akhir || invoice.total_bruto || 0);
+    const inferredShipping = Math.max(0, total - (sub - disc + ppn));
+
     setSiForm({
       editingId: invoice.id,
       invoiceNo: invoice.no_invoice,
@@ -2231,18 +2280,9 @@ export default function EternalPackagingERPWorkspace() {
       doId: null,
       termin: invoice.syarat_bayar || 'Net 30',
       dueDate: invoice.tgl_jatuh_tempo || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      items: (invoice.penjualan_detail || []).map((d) => ({
-        id: d.produk_id,
-        kode_sku: d.produk?.kode_sku || '',
-        nama: d.produk?.nama || '',
-        satuan: d.satuan || d.produk?.satuan || 'Pcs',
-        qty: Number(d.qty || 0),
-        harga_jual: Number(d.harga_jual || 0),
-        harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
-        diskonPersen: Number(d.diskon_persen || 0),
-        total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
-      })),
-      discountAmount: Number(invoice.diskon || 0),
+      items: rawItems,
+      discountAmount: disc,
+      shippingCost: inferredShipping,
       ppnActive: Boolean(invoice.ppn_nominal && Number(invoice.ppn_nominal) > 0),
       uangMuka: Number(invoice.uang_muka || 0),
       catatan: invoice.catatan || '',
@@ -2266,6 +2306,7 @@ export default function EternalPackagingERPWorkspace() {
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       items: [],
       discountAmount: 0,
+      shippingCost: 0,
       ppnActive: Boolean(companySettings.ppnAktifDefault),
       uangMuka: 0,
       catatan: '',
@@ -3996,9 +4037,29 @@ export default function EternalPackagingERPWorkspace() {
                           {calculateTotals(
                             soForm.items,
                             soForm.discountAmount,
-                            soForm.ppnActive
+                            soForm.ppnActive,
+                            null,
+                            soForm.shippingCost
                           ).ppn.toLocaleString('id-ID')}
                         </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Biaya Pengiriman (Ongkir):</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-slate-400">Rp</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={soForm.shippingCost ? formatDisplayDecimal(soForm.shippingCost) : ''}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const { num } = formatLiveInput(e.target.value);
+                              setSoForm((p) => ({ ...p, shippingCost: num }));
+                            }}
+                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex justify-between items-center text-sm font-extrabold pt-2 border-t border-slate-300 text-slate-900">
@@ -4008,7 +4069,9 @@ export default function EternalPackagingERPWorkspace() {
                           {calculateTotals(
                             soForm.items,
                             soForm.discountAmount,
-                            soForm.ppnActive
+                            soForm.ppnActive,
+                            null,
+                            soForm.shippingCost
                           ).grandTotal.toLocaleString('id-ID')}
                         </span>
                       </div>
@@ -4025,8 +4088,13 @@ export default function EternalPackagingERPWorkspace() {
                               Rp{' '}
                               {Math.max(
                                 0,
-                                calculateTotals(soForm.items, soForm.discountAmount, soForm.ppnActive).grandTotal -
-                                  Number(soForm.uangMuka || 0)
+                                calculateTotals(
+                                  soForm.items,
+                                  soForm.discountAmount,
+                                  soForm.ppnActive,
+                                  null,
+                                  soForm.shippingCost
+                                ).grandTotal - Number(soForm.uangMuka || 0)
                               ).toLocaleString('id-ID')}
                             </span>
                           </div>
@@ -4586,9 +4654,29 @@ export default function EternalPackagingERPWorkspace() {
                           {calculateTotals(
                             quoteForm.items,
                             quoteForm.discountAmount,
-                            quoteForm.ppnActive
+                            quoteForm.ppnActive,
+                            null,
+                            quoteForm.shippingCost
                           ).ppn.toLocaleString('id-ID')}
                         </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Biaya Pengiriman (Ongkir):</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-slate-400">Rp</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={quoteForm.shippingCost ? formatDisplayDecimal(quoteForm.shippingCost) : ''}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const { num } = formatLiveInput(e.target.value);
+                              setQuoteForm((p) => ({ ...p, shippingCost: num }));
+                            }}
+                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex justify-between items-center text-sm font-extrabold pt-2 border-t border-slate-300 text-slate-900">
@@ -4598,7 +4686,9 @@ export default function EternalPackagingERPWorkspace() {
                           {calculateTotals(
                             quoteForm.items,
                             quoteForm.discountAmount,
-                            quoteForm.ppnActive
+                            quoteForm.ppnActive,
+                            null,
+                            quoteForm.shippingCost
                           ).grandTotal.toLocaleString('id-ID')}
                         </span>
                       </div>
@@ -6071,9 +6161,29 @@ export default function EternalPackagingERPWorkspace() {
                           {calculateTotals(
                             siForm.items,
                             siForm.discountAmount,
-                            siForm.ppnActive
+                            siForm.ppnActive,
+                            null,
+                            siForm.shippingCost
                           ).ppn.toLocaleString('id-ID')}
                         </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Biaya Pengiriman (Ongkir):</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-slate-400">Rp</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={siForm.shippingCost ? formatDisplayDecimal(siForm.shippingCost) : ''}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const { num } = formatLiveInput(e.target.value);
+                              setSiForm((p) => ({ ...p, shippingCost: num }));
+                            }}
+                            className="w-28 px-2 py-0.5 text-right border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-700 bg-white font-mono"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex justify-between items-center text-sm font-extrabold pt-2 border-t border-slate-300 text-slate-900">
@@ -6083,7 +6193,9 @@ export default function EternalPackagingERPWorkspace() {
                           {calculateTotals(
                             siForm.items,
                             siForm.discountAmount,
-                            siForm.ppnActive
+                            siForm.ppnActive,
+                            null,
+                            siForm.shippingCost
                           ).grandTotal.toLocaleString('id-ID')}
                         </span>
                       </div>
@@ -6100,8 +6212,13 @@ export default function EternalPackagingERPWorkspace() {
                               Rp{' '}
                               {Math.max(
                                 0,
-                                calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive).grandTotal -
-                                  Number(siForm.uangMuka || 0)
+                                calculateTotals(
+                                  siForm.items,
+                                  siForm.discountAmount,
+                                  siForm.ppnActive,
+                                  null,
+                                  siForm.shippingCost
+                                ).grandTotal - Number(siForm.uangMuka || 0)
                               ).toLocaleString('id-ID')}
                             </span>
                           </div>

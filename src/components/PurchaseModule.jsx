@@ -40,6 +40,7 @@ import TableFilterToolbar from './TableFilterToolbar';
 import TableConfigModal, { DEFAULT_TABLE_CONFIGS } from './TableConfigModal';
 import GoogleLiveSupplierSearch from './GoogleLiveSupplierSearch';
 import PurchaseItemDetailModal from './PurchaseItemDetailModal';
+import ModernDatePicker from './ModernDatePicker';
 import FileUploadBukti from './FileUploadBukti';
 import ImageLightboxModal from './ImageLightboxModal';
 import { DEFAULT_PAYMENT_TERMS, calculateDueDate } from '../lib/paymentTerms';
@@ -216,6 +217,7 @@ export default function PurchaseModule({
     termin: 'Net 30',
     items: [],
     discountAmount: 0,
+    shippingCost: 0,
     ppnActive: false,
     catatan: '',
     lampiran_url: '',
@@ -249,6 +251,7 @@ export default function PurchaseModule({
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     items: [],
     discountAmount: 0,
+    shippingCost: 0,
     ppnActive: false,
     catatan: '',
     lampiran_url: '',
@@ -418,8 +421,9 @@ export default function PurchaseModule({
     const diskonFaktur = Number(poForm.discountAmount || 0);
     const dpp = Math.max(0, subtotal - diskonFaktur);
     const ppn = poForm.ppnActive ? Math.round(dpp * 0.11) : 0;
-    const grandTotal = Math.round(dpp + ppn);
-    return { subtotal: Math.round(subtotal), diskonFaktur, ppn, grandTotal };
+    const shipping = Number(poForm.shippingCost || 0);
+    const grandTotal = Math.round(dpp + ppn + shipping);
+    return { subtotal: Math.round(subtotal), diskonFaktur, ppn, shipping, grandTotal };
   };
 
   const calculateFBTotals = () => {
@@ -433,8 +437,9 @@ export default function PurchaseModule({
     const diskonFaktur = Number(piForm.discountAmount || 0);
     const dpp = Math.max(0, subtotal - diskonFaktur);
     const ppn = piForm.ppnActive ? Math.round(dpp * 0.11) : 0;
-    const grandTotal = Math.round(dpp + ppn);
-    return { subtotal: Math.round(subtotal), diskonFaktur, ppn, grandTotal };
+    const shipping = Number(piForm.shippingCost || 0);
+    const grandTotal = Math.round(dpp + ppn + shipping);
+    return { subtotal: Math.round(subtotal), diskonFaktur, ppn, shipping, grandTotal };
   };
 
   const handleTerminChange = (val, formType = 'FB') => {
@@ -575,27 +580,35 @@ export default function PurchaseModule({
 
   // 1. PO: Buka untuk Edit vs Form Baru
   const handleOpenPO = (po) => {
+    const rawItems = (po.pesanan_pembelian_detail || []).map((d) => {
+      const prod = products.find((p) => p.id === d.produk_id);
+      return {
+        id: d.produk_id,
+        kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
+        nama: d.produk?.nama || prod?.nama || '',
+        satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
+        qty: Number(d.qty || 1),
+        harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
+        diskonRp: Number(d.diskon || 0),
+        subtotal: Number(d.subtotal || (Number(d.qty) * Number(d.harga_beli))),
+      };
+    });
+    const sub = rawItems.reduce((acc, i) => acc + (Number(i.subtotal) || 0), 0);
+    const disc = Number(po.diskon || 0);
+    const ppn = Number(po.ppn_nominal || 0);
+    const total = Number(po.total || 0);
+    const inferredShipping = Math.max(0, total - (sub - disc + ppn));
+
     setPoForm({
       editingId: po.id,
       poNo: po.no_pesanan,
       date: po.tanggal,
       supplierId: po.supplier_id,
       termin: po.termin || 'Net 30',
-      items: (po.pesanan_pembelian_detail || []).map((d) => {
-        const prod = products.find((p) => p.id === d.produk_id);
-        return {
-          id: d.produk_id,
-          kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
-          nama: d.produk?.nama || prod?.nama || '',
-          satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
-          qty: Number(d.qty || 1),
-          harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
-          diskonRp: Number(d.diskon || 0),
-          subtotal: Number(d.subtotal || (Number(d.qty) * Number(d.harga_beli))),
-        };
-      }),
-      discountAmount: Number(po.diskon || 0),
-      ppnActive: Boolean(po.ppn_nominal && Number(po.ppn_nominal) > 0),
+      items: rawItems,
+      discountAmount: disc,
+      shippingCost: inferredShipping,
+      ppnActive: Boolean(ppn > 0),
       catatan: po.catatan || '',
       lampiran_url: po.lampiran_url || '',
       status: po.status,
@@ -614,6 +627,7 @@ export default function PurchaseModule({
       termin: 'Net 30',
       items: [],
       discountAmount: 0,
+      shippingCost: 0,
       ppnActive: false,
       catatan: '',
       lampiran_url: '',
@@ -673,6 +687,25 @@ export default function PurchaseModule({
 
   // 3. FB: Buka untuk Edit vs Form Baru
   const handleOpenFB = (p) => {
+    const rawItems = (p.pembelian_detail || []).map((d) => {
+      const prod = products.find((pr) => pr.id === d.produk_id);
+      return {
+        id: d.produk_id,
+        kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
+        nama: d.produk?.nama || prod?.nama || '',
+        satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
+        qty: Number(d.qty || 1),
+        harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
+        diskonRp: Number(d.diskon || 0),
+        subtotal: Number(d.subtotal || (Number(d.qty) * Number(d.harga_beli))),
+      };
+    });
+    const sub = rawItems.reduce((acc, i) => acc + (Number(i.subtotal) || 0), 0);
+    const disc = Number(p.diskon || 0);
+    const ppn = Number(p.ppn_nominal || 0);
+    const total = Number(p.total_akhir || p.total || 0);
+    const inferredShipping = Math.max(0, total - (sub - disc + ppn));
+
     setPiForm({
       editingId: p.id,
       invoiceNo: p.no_faktur,
@@ -681,21 +714,10 @@ export default function PurchaseModule({
       supplierId: p.supplier_id,
       termin: p.syarat_bayar || 'Net 30',
       dueDate: p.tgl_jatuh_tempo || new Date().toISOString().split('T')[0],
-      items: (p.pembelian_detail || []).map((d) => {
-        const prod = products.find((pr) => pr.id === d.produk_id);
-        return {
-          id: d.produk_id,
-          kode_sku: d.produk?.kode_sku || prod?.kode_sku || '',
-          nama: d.produk?.nama || prod?.nama || '',
-          satuan: d.satuan || d.produk?.satuan || prod?.satuan || 'Pcs',
-          qty: Number(d.qty || 1),
-          harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
-          diskonRp: Number(d.diskon || 0),
-          subtotal: Number(d.subtotal || (Number(d.qty) * Number(d.harga_beli))),
-        };
-      }),
-      discountAmount: Number(p.diskon || 0),
-      ppnActive: Boolean(p.ppn_nominal && Number(p.ppn_nominal) > 0),
+      items: rawItems,
+      discountAmount: disc,
+      shippingCost: inferredShipping,
+      ppnActive: Boolean(ppn > 0),
       catatan: p.catatan || '',
       lampiran_url: p.lampiran_url || '',
       poId: p.pesanan_pembelian_id || null,
@@ -719,6 +741,7 @@ export default function PurchaseModule({
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       items: [],
       discountAmount: 0,
+      shippingCost: 0,
       ppnActive: false,
       catatan: '',
       lampiran_url: '',
@@ -1176,7 +1199,7 @@ export default function PurchaseModule({
 
     try {
       setLoading(true);
-      const { subtotal, diskonFaktur, ppn, grandTotal } = calculateFBTotals();
+      const { subtotal, diskonFaktur, ppn, shipping, grandTotal } = calculateFBTotals();
       const isCOD = piForm.termin === 'COD';
       const docNo = piForm.editingId ? piForm.invoiceNo : await getNextDocNumber('FB', piForm.date);
 
@@ -1286,17 +1309,28 @@ export default function PurchaseModule({
 
       // 4. Posting Jurnal Double-Entry (GAAP/PSAK):
       // Debit: 1104-01 (Persediaan Barang Dagang)
+      // Debit: 5102-01 (Ongkos Angkut Pembelian Bahan / Freight In jika ada)
       // Debit: 1105-03 (PPN Masukan jika aktif)
       // Kredit: 2101-01 (Hutang Usaha Supplier) jika tempo, ATAU 1102-01 / 1101-01 jika COD
       const creditAccount = isCOD ? '1102-01' : '2101-01';
+      const netBarang = Math.max(0, subtotal - diskonFaktur);
       const journalLines = [
         {
           kodeAkun: '1104-01',
-          debit: subtotal,
+          debit: netBarang,
           kredit: 0,
           catatan: `Persediaan Kemasan Masuk (${docNo})`,
         },
       ];
+
+      if (shipping > 0) {
+        journalLines.push({
+          kodeAkun: '5102-01',
+          debit: shipping,
+          kredit: 0,
+          catatan: `Ongkos Angkut Pembelian Bahan (${docNo})`,
+        });
+      }
 
       if (ppn > 0) {
         journalLines.push({
@@ -1666,6 +1700,7 @@ export default function PurchaseModule({
       termin: poTerm,
       dueDate: dueDate,
       discountAmount: Number(po.discountAmount || 0),
+      shippingCost: Number(po.shippingCost || 0),
       ppnActive: po.ppnActive !== undefined ? po.ppnActive : false,
       items: sourceItems.map((i) => ({
         id: i.id,
@@ -2366,8 +2401,8 @@ export default function PurchaseModule({
           {viewModes.po_beli === 'form' && (
             <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
               {/* HEADER FORM */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs bg-slate-50/80 p-4 rounded-lg border border-slate-200">
+                <div className="sm:col-span-4">
                   <label className="block font-bold text-slate-700 mb-1">
                     Pemasok / Supplier Kemasan <span className="text-rose-500">*</span>
                   </label>
@@ -2380,42 +2415,39 @@ export default function PurchaseModule({
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-3">
                   <label className="block font-bold text-slate-700 mb-1">No. Pesanan (Auto-Sequence)</label>
                   <input
                     type="text"
                     value={poForm.poNo}
                     readOnly={!poForm.editingId}
                     onChange={(e) => setPoForm((p) => ({ ...p, poNo: e.target.value }))}
-                    className={`w-full px-2.5 py-2 border border-slate-200/80 rounded-xl font-mono font-bold text-emerald-950 ${
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-950 ${
                       !poForm.editingId ? 'bg-slate-100 cursor-not-allowed' : 'bg-white'
                     }`}
                   />
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Tanggal Pesanan</label>
-                  <input
-                    type="date"
+                <div className="sm:col-span-2">
+                  <ModernDatePicker
+                    label="Tanggal Pesanan"
                     value={poForm.date}
-                    onChange={async (e) => {
-                      const val = e.target.value;
+                    onChange={async (val) => {
                       let nextNo = poForm.poNo;
                       if (!poForm.editingId) {
                         nextNo = (await peekNextDocNumber('PO', val)) || nextNo;
                       }
                       setPoForm((p) => ({ ...p, date: val, poNo: nextNo }));
                     }}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white focus:ring-1 focus:ring-emerald-700 font-mono"
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-3">
                   <label className="block font-bold text-slate-700 mb-1">Syarat Bayar / Termin</label>
                   <select
                     value={poForm.termin}
                     onChange={(e) => handleTerminChange(e.target.value, 'PO')}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white focus:ring-1 focus:ring-emerald-700 font-medium"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-700 font-medium"
                   >
                     {syaratBayarList.map((term) => (
                       <option key={term.id || term.nama} value={term.nama}>
@@ -2619,6 +2651,20 @@ export default function PurchaseModule({
                     <strong className="font-mono text-slate-900">
                       Rp {calculatePOTotals().ppn.toLocaleString('id-ID')}
                     </strong>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span>Biaya Pengiriman (Ongkir):</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={poForm.shippingCost ? formatDisplayDecimal(poForm.shippingCost) : ''}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const { num } = formatLiveInput(e.target.value);
+                        setPoForm((p) => ({ ...p, shippingCost: num }));
+                      }}
+                      className="w-32 py-1 px-2 border border-slate-200/80 rounded text-right font-mono bg-white font-bold"
+                    />
                   </div>
                   <div className="flex justify-between items-center text-sm font-extrabold text-emerald-950 pt-2 border-t border-slate-200/80">
                     <span>TOTAL PESANAN (PO):</span>
@@ -3009,8 +3055,8 @@ export default function PurchaseModule({
           {/* FORM VIEW RI */}
           {viewModes.ri_beli === 'form' && (
             <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs bg-slate-50/80 p-4 rounded-lg border border-slate-200">
+                <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Pemasok / Supplier Kemasan <span className="text-rose-500">*</span>
                   </label>
@@ -3030,26 +3076,23 @@ export default function PurchaseModule({
                     value={riForm.riNo}
                     readOnly={!riForm.editingId}
                     onChange={(e) => setRiForm((p) => ({ ...p, riNo: e.target.value }))}
-                    className={`w-full px-2.5 py-2 border border-slate-200/80 rounded-xl font-mono font-bold text-emerald-950 ${
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-950 ${
                       !riForm.editingId ? 'bg-slate-100 cursor-not-allowed' : 'bg-white'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Tanggal Terima Fisik</label>
-                  <input
-                    type="date"
+                  <ModernDatePicker
+                    label="Tanggal Terima Fisik"
                     value={riForm.date}
-                    onChange={async (e) => {
-                      const val = e.target.value;
+                    onChange={async (val) => {
                       let nextNo = riForm.riNo;
                       if (!riForm.editingId) {
                         nextNo = (await peekNextDocNumber('RI', val)) || nextNo;
                       }
                       setRiForm((p) => ({ ...p, date: val, riNo: nextNo }));
                     }}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-mono"
                   />
                 </div>
 
@@ -3060,7 +3103,7 @@ export default function PurchaseModule({
                     placeholder="Contoh: SJ-2026/XI/889"
                     value={riForm.supplierSJNo}
                     onChange={(e) => setRiForm((p) => ({ ...p, supplierSJNo: e.target.value }))}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-mono"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono"
                   />
                 </div>
               </div>
@@ -3587,8 +3630,8 @@ export default function PurchaseModule({
           {/* FORM VIEW FB */}
           {viewModes.pi_beli === 'form' && (
             <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-3 overflow-y-auto shadow-2xs text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 text-xs bg-slate-50/80 p-4 rounded-lg border border-slate-200">
+                <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Pemasok / Supplier Kemasan <span className="text-rose-500">*</span>
                   </label>
@@ -3608,19 +3651,17 @@ export default function PurchaseModule({
                     value={piForm.invoiceNo}
                     readOnly={!piForm.editingId}
                     onChange={(e) => setPiForm((p) => ({ ...p, invoiceNo: e.target.value }))}
-                    className={`w-full px-2.5 py-2 border border-slate-200/80 rounded-xl font-mono font-bold text-emerald-950 ${
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-950 ${
                       !piForm.editingId ? 'bg-slate-100 cursor-not-allowed' : 'bg-white'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Tanggal Faktur</label>
-                  <input
-                    type="date"
+                  <ModernDatePicker
+                    label="Tanggal Faktur"
                     value={piForm.date}
-                    onChange={async (e) => {
-                      const val = e.target.value;
+                    onChange={async (val) => {
                       const newDueDate = calculateDueDate(val, piForm.termin, syaratBayarList);
                       let nextNo = piForm.invoiceNo;
                       if (!piForm.editingId) {
@@ -3628,7 +3669,6 @@ export default function PurchaseModule({
                       }
                       setPiForm((p) => ({ ...p, date: val, dueDate: newDueDate, invoiceNo: nextNo }));
                     }}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-mono"
                   />
                 </div>
 
@@ -3637,7 +3677,7 @@ export default function PurchaseModule({
                   <select
                     value={piForm.termin}
                     onChange={(e) => handleTerminChange(e.target.value, 'FB')}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-medium"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-medium focus:ring-1 focus:ring-emerald-700"
                   >
                     {syaratBayarList.map((term) => (
                       <option key={term.id || term.nama} value={term.nama}>
@@ -3648,23 +3688,21 @@ export default function PurchaseModule({
                 </div>
 
                 <div>
+                  <ModernDatePicker
+                    label="Tanggal Jatuh Tempo"
+                    value={piForm.dueDate}
+                    onChange={(val) => setPiForm((p) => ({ ...p, dueDate: val }))}
+                  />
+                </div>
+
+                <div>
                   <label className="block font-bold text-slate-700 mb-1">No. Faktur Supplier</label>
                   <input
                     type="text"
                     placeholder="Contoh: INV-PABRIK-881"
                     value={piForm.supplierNo}
                     onChange={(e) => setPiForm((p) => ({ ...p, supplierNo: e.target.value }))}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Tanggal Jatuh Tempo</label>
-                  <input
-                    type="date"
-                    value={piForm.dueDate}
-                    onChange={(e) => setPiForm((p) => ({ ...p, dueDate: e.target.value }))}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-mono"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono"
                   />
                 </div>
               </div>
@@ -3857,6 +3895,20 @@ export default function PurchaseModule({
                     <strong className="font-mono text-slate-900">
                       Rp {calculateFBTotals().ppn.toLocaleString('id-ID')}
                     </strong>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span>Biaya Pengiriman (Ongkir):</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={piForm.shippingCost ? formatDisplayDecimal(piForm.shippingCost) : ''}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const { num } = formatLiveInput(e.target.value);
+                        setPiForm((p) => ({ ...p, shippingCost: num }));
+                      }}
+                      className="w-32 py-1 px-2 border border-slate-200/80 rounded text-right font-mono bg-white font-bold"
+                    />
                   </div>
                   <div className="flex justify-between items-center text-sm font-extrabold text-emerald-950 pt-2 border-t border-slate-200/80">
                     <span>TOTAL FAKTUR PEMBELIAN:</span>
@@ -4190,8 +4242,8 @@ export default function PurchaseModule({
           {/* FORM VIEW PP */}
           {viewModes.pp_beli === 'form' && (
             <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-4 space-y-4 overflow-y-auto shadow-2xs text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs bg-slate-50/80 p-4 rounded-lg border border-slate-200">
+                <div className="sm:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">
                     Pemasok / Supplier Kemasan <span className="text-rose-500">*</span>
                   </label>
@@ -4211,26 +4263,23 @@ export default function PurchaseModule({
                     value={paymentForm.receiptNo}
                     readOnly={!paymentForm.editingId}
                     onChange={(e) => setPaymentForm((p) => ({ ...p, receiptNo: e.target.value }))}
-                    className={`w-full px-2.5 py-2 border border-slate-200/80 rounded-xl font-mono font-bold text-emerald-950 ${
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-950 ${
                       !paymentForm.editingId ? 'bg-slate-100 cursor-not-allowed' : 'bg-white'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Tanggal Pembayaran</label>
-                  <input
-                    type="date"
+                  <ModernDatePicker
+                    label="Tanggal Pembayaran"
                     value={paymentForm.date}
-                    onChange={async (e) => {
-                      const val = e.target.value;
+                    onChange={async (val) => {
                       let nextNo = paymentForm.receiptNo;
                       if (!paymentForm.editingId) {
                         nextNo = (await peekNextDocNumber('PP', val)) || nextNo;
                       }
                       setPaymentForm((p) => ({ ...p, date: val, receiptNo: nextNo }));
                     }}
-                    className="w-full px-2.5 py-2 border border-slate-200/80 rounded-xl bg-white font-mono"
                   />
                 </div>
               </div>
