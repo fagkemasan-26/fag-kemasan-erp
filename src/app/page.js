@@ -128,6 +128,7 @@ export default function EternalPackagingERPWorkspace() {
       { id: 'pi_beli', title: 'Faktur Pembelian (FB)', type: 'pi_beli', closable: true },
       { id: 'pp_beli', title: 'Pembayaran Pembelian (PP)', type: 'pp_beli', closable: true },
       { id: 'suppliers', title: 'Daftar Pemasok', type: 'suppliers', closable: true },
+      { id: 'settings', title: 'Pengaturan Usaha', type: 'settings', closable: true },
     ],
     persediaan: [
       { id: 'items', title: 'Barang & Jasa (Master Kemasan)', type: 'items', closable: false },
@@ -200,6 +201,13 @@ export default function EternalPackagingERPWorkspace() {
       return () => window.removeEventListener('hashchange', handleHashChange);
     }
   }, []);
+
+  // Keep browser URL hash synchronized with activeTabId
+  useEffect(() => {
+    if (typeof window !== 'undefined' && activeTabId) {
+      window.history.replaceState(null, '', `#${activeTabId}`);
+    }
+  }, [activeTabId]);
 
   // VIEW MODE ACCURATE ONLINE: 'list' (Daftar) vs 'form' (Buat Baru)
   const [viewModes, setViewModes] = useState({
@@ -1844,6 +1852,13 @@ export default function EternalPackagingERPWorkspace() {
           })
           .eq('id', invoiceId);
         if (siUpdErr) throw siUpdErr;
+
+        if (statusInv === 'LUNAS' && currentInvoice?.pesanan_id) {
+          await supabase
+            .from('pesanan_penjualan')
+            .update({ status_bayar: 'LUNAS' })
+            .eq('id', currentInvoice.pesanan_id);
+        }
       }
 
       // 3. Jurnal Finansial Otomatis (GAAP/PSAK):
@@ -3517,9 +3532,14 @@ export default function EternalPackagingERPWorkspace() {
                     if (soFilter.statusBayar === 'ALL') return true;
                     const dp = Number(s.uang_muka || 0);
                     const total = Number(s.total || 0);
-                    if (soFilter.statusBayar === 'BELUM_BAYAR') return dp === 0;
-                    if (soFilter.statusBayar === 'SEBAGIAN_DP') return dp > 0 && dp < total;
-                    if (soFilter.statusBayar === 'LUNAS') return dp >= total && total > 0;
+                    const linkedInv = salesInvoices.find((i) => i.pesanan_id === s.id);
+                    const isInvoiceLunas = linkedInv && (linkedInv.status === 'LUNAS' || Number(linkedInv.bayar || 0) >= Number(linkedInv.total_akhir || 0));
+                    const isLunas = s.status_bayar === 'LUNAS' || isInvoiceLunas || (dp >= total && total > 0);
+                    const isPartial = (dp > 0 && dp < total) || (linkedInv && Number(linkedInv.bayar || 0) > 0 && !isInvoiceLunas);
+
+                    if (soFilter.statusBayar === 'BELUM_BAYAR') return !isLunas && !isPartial;
+                    if (soFilter.statusBayar === 'SEBAGIAN_DP') return isPartial;
+                    if (soFilter.statusBayar === 'LUNAS') return isLunas;
                     return true;
                   })
                   // 3. Status Kirim
@@ -3727,35 +3747,63 @@ export default function EternalPackagingERPWorkspace() {
                                       Rp {Number(s.total || 0).toLocaleString('id-ID')}
                                     </td>
                                   )}
-                                  {cols.statusBayar !== false && (
-                                    <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                      {Number(s.uang_muka || 0) > 0 ? (
-                                        <div className="flex flex-col items-center">
-                                          <span
-                                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                                              Number(s.uang_muka || 0) >= Number(s.total || 0)
-                                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                                : 'bg-amber-50 text-amber-900 border-amber-300'
-                                            }`}
-                                          >
-                                            {Number(s.uang_muka || 0) >= Number(s.total || 0) ? 'LUNAS (DP FULL)' : 'SEBAGIAN DP'}
+                                  {cols.statusBayar !== false && (() => {
+                                    const dp = Number(s.uang_muka || 0);
+                                    const total = Number(s.total || 0);
+                                    const linkedInv = salesInvoices.find((i) => i.pesanan_id === s.id);
+                                    const isInvoiceLunas = linkedInv && (linkedInv.status === 'LUNAS' || Number(linkedInv.bayar || 0) >= Number(linkedInv.total_akhir || 0));
+                                    const isDpLunas = dp >= total && total > 0;
+                                    const isLunas = s.status_bayar === 'LUNAS' || isInvoiceLunas || isDpLunas;
+
+                                    if (isLunas) {
+                                      return (
+                                        <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-50 text-emerald-800 border-emerald-300">
+                                            LUNAS
                                           </span>
-                                          <span className="text-[10px] font-mono font-bold text-emerald-950 mt-0.5">
-                                            DP: Rp {Number(s.uang_muka || 0).toLocaleString('id-ID')}
-                                          </span>
-                                          {Number(s.uang_muka || 0) < Number(s.total || 0) && (
-                                            <span className="text-[9px] text-slate-400 font-mono">
-                                              Sisa: Rp {Math.max(0, Number(s.total || 0) - Number(s.uang_muka || 0)).toLocaleString('id-ID')}
+                                        </td>
+                                      );
+                                    }
+                                    if (dp > 0) {
+                                      return (
+                                        <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                          <div className="flex flex-col items-center">
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-900 border-amber-300">
+                                              SEBAGIAN DP
                                             </span>
-                                          )}
-                                        </div>
-                                      ) : (
+                                            <span className="text-[10px] font-mono font-bold text-emerald-950 mt-0.5">
+                                              DP: Rp {dp.toLocaleString('id-ID')}
+                                            </span>
+                                            <span className="text-[9px] text-slate-400 font-mono">
+                                              Sisa: Rp {Math.max(0, total - dp).toLocaleString('id-ID')}
+                                            </span>
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+                                    if (linkedInv && Number(linkedInv.bayar || 0) > 0) {
+                                      const paid = Number(linkedInv.bayar || 0);
+                                      return (
+                                        <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                          <div className="flex flex-col items-center">
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-900 border-amber-300">
+                                              SEBAGIAN BAYAR
+                                            </span>
+                                            <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                              Dibayar: Rp {paid.toLocaleString('id-ID')}
+                                            </span>
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+                                    return (
+                                      <td className={`${densityClass} text-center border-r border-slate-100/80`}>
                                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-600 border-slate-200">
                                           BELUM BAYAR
                                         </span>
-                                      )}
-                                    </td>
-                                  )}
+                                      </td>
+                                    );
+                                  })()}
                                   {cols.statusKirim !== false && (
                                     <td className={`${densityClass} text-center border-r border-slate-100/80`}>
                                       <span

@@ -39,6 +39,7 @@ export default function TableFilterToolbar({
   const activeFilters = config?.activeFilters || {
     statusBayar: true,
     statusKirim: true,
+    statusTerima: true,
     status: true,
     dateRange: true,
     customer: !isPurchase && moduleType !== 'items' && moduleType !== 'mutation' && moduleType !== 'opname',
@@ -55,6 +56,7 @@ export default function TableFilterToolbar({
     (searchQuery && searchQuery.trim() !== '') ||
     (filters.statusBayar && filters.statusBayar !== 'ALL') ||
     (filters.statusKirim && filters.statusKirim !== 'ALL') ||
+    (filters.statusTerima && filters.statusTerima !== 'ALL') ||
     (filters.status && filters.status !== 'ALL') ||
     (filters.dateRange && filters.dateRange !== 'ALL') ||
     (filters.customer && filters.customer !== 'ALL') ||
@@ -96,7 +98,7 @@ export default function TableFilterToolbar({
           </div>
 
           {/* 2. Filter Status Pembayaran / DP (Terpecah Khusus) */}
-          {activeFilters.statusBayar && (moduleType === 'so' || moduleType === 'si' || moduleType === 'pi_beli') && (
+          {activeFilters.statusBayar && (moduleType === 'so' || moduleType === 'si' || moduleType === 'pi_beli' || moduleType === 'po_beli') && (
             <div className="flex items-center space-x-1">
               <select
                 value={filters.statusBayar || 'ALL'}
@@ -119,6 +121,11 @@ export default function TableFilterToolbar({
                     <option value="PIUTANG">Belum Lunas (Piutang)</option>
                     <option value="LUNAS">Lunas Penuh</option>
                   </>
+                ) : moduleType === 'po_beli' ? (
+                  <>
+                    <option value="BELUM_BAYAR">Belum Bayar (Hutang)</option>
+                    <option value="LUNAS">Lunas Penuh</option>
+                  </>
                 ) : (
                   <>
                     <option value="HUTANG">Belum Lunas (Hutang)</option>
@@ -129,7 +136,7 @@ export default function TableFilterToolbar({
             </div>
           )}
 
-          {/* 3. Filter Status Pengiriman / Status Pesanan (Terpecah Khusus) */}
+          {/* 3. Filter Status Pengiriman / Penerimaan */}
           {activeFilters.statusKirim && moduleType === 'so' && (
             <div className="flex items-center space-x-1">
               <select
@@ -148,8 +155,29 @@ export default function TableFilterToolbar({
             </div>
           )}
 
-          {/* Filter Status Dokumen (Quotation, DO, PO Beli) */}
-          {activeFilters.status && (moduleType === 'quotation' || moduleType === 'do' || moduleType === 'po_beli') && (
+          {activeFilters.statusTerima && moduleType === 'po_beli' && (
+            <div className="flex items-center space-x-1">
+              <select
+                value={filters.statusTerima || filters.status || 'ALL'}
+                onChange={(e) => {
+                  onFilterChange('statusTerima', e.target.value);
+                  onFilterChange('status', e.target.value);
+                }}
+                className={`py-1.5 px-3 border rounded-xl text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-emerald-700/20 cursor-pointer ${
+                  (filters.statusTerima && filters.statusTerima !== 'ALL') || (filters.status && filters.status !== 'ALL')
+                    ? 'bg-blue-50 text-blue-900 border-blue-300 font-bold'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <option value="ALL">Status Terima: Semua</option>
+                <option value="MENUNGGU_PENERIMAAN">Menunggu Penerimaan</option>
+                <option value="SELESAI">Selesai / Diterima</option>
+              </select>
+            </div>
+          )}
+
+          {/* Filter Status Dokumen (Quotation, DO) */}
+          {activeFilters.status && (moduleType === 'quotation' || moduleType === 'do') && (
             <div className="flex items-center space-x-1">
               <select
                 value={filters.status || 'ALL'}
@@ -167,15 +195,10 @@ export default function TableFilterToolbar({
                     <option value="DIKIRIM">Terkirim ke Klien</option>
                     <option value="TERIMA">Diterima / Menjadi PO</option>
                   </>
-                ) : moduleType === 'do' ? (
+                ) : (
                   <>
                     <option value="PROSES">Dalam Perjalanan / Proses</option>
                     <option value="TERKIRIM">Terkirim Selesai</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="MENUNGGU_PENERIMAAN">Menunggu Penerimaan</option>
-                    <option value="SELESAI">Selesai Diterima</option>
                   </>
                 )}
               </select>

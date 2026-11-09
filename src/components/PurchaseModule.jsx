@@ -107,6 +107,8 @@ export default function PurchaseModule({
   // Advanced Dedicated Filters State for Purchasing
   const [advancedFilters, setAdvancedFilters] = useState({
     po_beli: {
+      statusBayar: 'ALL',
+      statusTerima: 'ALL',
       status: 'ALL',
       dateRange: 'ALL',
       customStartDate: '',
@@ -1774,9 +1776,19 @@ export default function PurchaseModule({
     })
     .filter((po) => {
       const flt = advancedFilters.po_beli;
-      if (flt.status === 'ALL') return true;
-      if (flt.status === 'MENUNGGU_PENERIMAAN') return po.status !== 'SELESAI';
-      if (flt.status === 'SELESAI') return po.status === 'SELESAI';
+      const statusTerima = flt.statusTerima !== undefined && flt.statusTerima !== 'ALL' ? flt.statusTerima : flt.status;
+      if (statusTerima === 'ALL') return true;
+      if (statusTerima === 'MENUNGGU_PENERIMAAN') return po.status !== 'SELESAI';
+      if (statusTerima === 'SELESAI') return po.status === 'SELESAI';
+      return true;
+    })
+    .filter((po) => {
+      const flt = advancedFilters.po_beli;
+      if (!flt.statusBayar || flt.statusBayar === 'ALL') return true;
+      const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id);
+      const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
+      if (flt.statusBayar === 'LUNAS') return isLunas;
+      if (flt.statusBayar === 'BELUM_BAYAR') return !isLunas;
       return true;
     })
     .filter((po) => {
@@ -2150,12 +2162,13 @@ export default function PurchaseModule({
                       <thead className="bg-slate-50/90 backdrop-blur-sm text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
                         <tr>
                           {cols.no !== false && <th className="py-3 px-3 w-10 text-center border-r border-slate-200/60">No.</th>}
-                          {cols.noPesanan !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">No. Pesanan (PO)</th>}
+                          {cols.noPesanan !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">No. Pesanan</th>}
                           {cols.tanggal !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Tanggal</th>}
                           {cols.supplier !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Pemasok / Supplier</th>}
-                          {cols.catatan !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Catatan</th>}
+                          {cols.catatan !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Keterangan / Catatan</th>}
                           {cols.total !== false && <th className="py-3 px-3.5 text-right border-r border-slate-200/60">Total Nilai (Rp)</th>}
-                          {cols.status !== false && <th className="py-3 px-3.5 text-center border-r border-slate-200/60">Status</th>}
+                          {cols.statusBayar !== false && <th className="py-3 px-3.5 text-center border-r border-slate-200/60">Status Pembayaran / DP</th>}
+                          {(cols.statusTerima !== false || cols.status !== false) && <th className="py-3 px-3.5 text-center border-r border-slate-200/60">Status Penerimaan</th>}
                           {cols.aksiLanjutan === true && <th className="py-3 px-3.5 text-center">Aksi Cepat</th>}
                         </tr>
                       </thead>
@@ -2228,7 +2241,7 @@ export default function PurchaseModule({
                                           title="Lihat Bukti Foto / Dokumen"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Bukti</span>
+                                          <span>Foto</span>
                                         </button>
                                       )}
                                     </div>
@@ -2269,7 +2282,24 @@ export default function PurchaseModule({
                                   Rp {Number(po.total || 0).toLocaleString('id-ID')}
                                 </td>
                               )}
-                              {cols.status !== false && (
+                              {cols.statusBayar !== false && (() => {
+                                const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id);
+                                const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
+                                return (
+                                  <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                    <span
+                                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        isLunas
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                                      }`}
+                                    >
+                                      {isLunas ? 'LUNAS' : 'BELUM BAYAR'}
+                                    </span>
+                                  </td>
+                                );
+                              })()}
+                              {(cols.statusTerima !== false || cols.status !== false) && (
                                 <td className={`${densityClass} text-center border-r border-slate-100/80`}>
                                   <span
                                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -2278,7 +2308,7 @@ export default function PurchaseModule({
                                         : 'bg-amber-50 text-amber-800 border-amber-300'
                                     }`}
                                   >
-                                    {po.status === 'SELESAI' ? 'Selesai' : 'Menunggu Penerimaan'}
+                                    {po.status === 'SELESAI' ? 'SELESAI' : 'MENUNGGU PENERIMAAN'}
                                   </span>
                                 </td>
                               )}
@@ -2322,9 +2352,9 @@ export default function PurchaseModule({
                     <div className="flex items-center space-x-2">
                       <span>Ditampilkan: <strong className="text-slate-800">{filteredPOs.length}</strong> dari <strong className="text-slate-800">{purchaseOrders.length}</strong> pesanan</span>
                       <span>•</span>
-                      <span>Selesai: <strong className="text-emerald-700">{purchaseOrders.filter((p) => p.status === 'SELESAI').length}</strong></span>
+                      <span>Menunggu Terima: <strong className="text-amber-700">{purchaseOrders.filter((p) => p.status !== 'SELESAI').length}</strong></span>
                       <span>•</span>
-                      <span>Menunggu: <strong className="text-amber-700">{purchaseOrders.filter((p) => p.status !== 'SELESAI').length}</strong></span>
+                      <span>Selesai: <strong className="text-emerald-700">{purchaseOrders.filter((p) => p.status === 'SELESAI').length}</strong></span>
                     </div>
                     <div className="font-mono text-emerald-950 font-bold text-xs">
                       Total Akumulasi: Rp {filteredPOs.reduce((acc, p) => acc + Number(p.total || 0), 0).toLocaleString('id-ID')}
@@ -2895,7 +2925,7 @@ export default function PurchaseModule({
                                           title="Lihat Foto Fisik Barang / Surat Jalan Supplier"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Bukti</span>
+                                          <span>Foto</span>
                                         </button>
                                       )}
                                     </div>
@@ -3384,7 +3414,7 @@ export default function PurchaseModule({
                       <thead className="bg-slate-50/90 backdrop-blur-sm text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
                         <tr>
                           {cols.no !== false && <th className="py-3 px-3 w-10 text-center border-r border-slate-200/60">No.</th>}
-                          {cols.noFaktur !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">No. Faktur Beli</th>}
+                          {cols.noFaktur !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">No. Faktur</th>}
                           {cols.tanggal !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Tanggal</th>}
                           {cols.supplier !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Pemasok / Supplier</th>}
                           {cols.syaratBayar !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Syarat Bayar</th>}
@@ -3462,7 +3492,7 @@ export default function PurchaseModule({
                                           title="Lihat Bukti Foto Nota/Faktur Supplier"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Bukti</span>
+                                          <span>Foto</span>
                                         </button>
                                       )}
                                     </div>
@@ -4015,10 +4045,10 @@ export default function PurchaseModule({
                       <thead className="bg-slate-50/90 backdrop-blur-sm text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
                         <tr>
                           {cols.no !== false && <th className="py-3 px-3 w-10 text-center border-r border-slate-200/60">No.</th>}
-                          {cols.noBukti !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">No. Bukti Kas Keluar (PP)</th>}
+                          {cols.noBukti !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">No. Bukti Kas</th>}
                           {cols.tanggal !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Tanggal</th>}
                           {cols.supplier !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Pemasok / Supplier</th>}
-                          {cols.bankAkun !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Akun Kas / Bank</th>}
+                          {cols.bankAkun !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Bank / Kas Pengeluar</th>}
                           {cols.nominal !== false && <th className="py-3 px-3.5 text-right border-r border-slate-200/60">Total Bayar (Rp)</th>}
                           {cols.aksiLanjutan === true && <th className="py-3 px-3.5 text-center">Aksi Cepat</th>}
                         </tr>
@@ -4084,7 +4114,7 @@ export default function PurchaseModule({
                                           title="Lihat Bukti Struk / Slip Transfer Bank"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Bukti</span>
+                                          <span>Foto</span>
                                         </button>
                                       )}
                                     </div>
