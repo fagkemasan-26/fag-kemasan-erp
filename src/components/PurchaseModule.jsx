@@ -1457,12 +1457,13 @@ export default function PurchaseModule({
         const totalInvoice = Number(targetPurchase?.total_akhir || targetPurchase?.total || 0);
         const currentPaid = Number(targetPurchase?.bayar || 0);
         const newPaid = currentPaid + Number(paymentForm.amount);
-        const isFull = newPaid >= totalInvoice;
+        const isFull = newPaid >= totalInvoice || Math.abs(newPaid - totalInvoice) <= 2;
+        const finalBayar = isFull ? totalInvoice : newPaid;
 
         const { error: pUpdErr } = await supabase
           .from('pembelian')
           .update({
-            bayar: newPaid,
+            bayar: finalBayar,
             status_bayar: isFull ? 'LUNAS' : 'HUTANG',
           })
           .eq('id', purchaseId);

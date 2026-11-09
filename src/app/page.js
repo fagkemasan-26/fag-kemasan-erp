@@ -468,7 +468,7 @@ export default function EternalPackagingERPWorkspace() {
     const accBal = piutangAccount ? (accountBalances[piutangAccount.id]?.saldoAkhir || 0) : 0;
     const fromInvoices = salesInvoices
       .filter((i) => i.status === 'PIUTANG' || i.status === 'BELUM_LUNAS')
-      .reduce((sum, i) => sum + Number(i.total_akhir || 0), 0);
+      .reduce((sum, i) => sum + Math.max(0, Number(i.total_akhir || 0) - Number(i.bayar || 0)), 0);
     return Math.max(accBal, fromInvoices);
   }, [accounts, accountBalances, salesInvoices]);
 
@@ -477,7 +477,7 @@ export default function EternalPackagingERPWorkspace() {
     const accBal = hutangAccount ? (accountBalances[hutangAccount.id]?.saldoAkhir || 0) : 0;
     const fromPurchases = purchases
       .filter((p) => p.status_bayar === 'HUTANG' || p.status_bayar === 'BELUM_LUNAS')
-      .reduce((sum, p) => sum + Number(p.total_akhir || p.total || 0), 0);
+      .reduce((sum, p) => sum + Math.max(0, Number(p.total_akhir || p.total || 0) - Number(p.bayar || 0)), 0);
     return Math.max(accBal, fromPurchases);
   }, [accounts, accountBalances, purchases]);
 
@@ -1618,6 +1618,16 @@ export default function EternalPackagingERPWorkspace() {
           bayar: newBayar,
         })
         .eq('id', payForm.invoiceId);
+
+      // Sinkronkan status bayar di Pesanan Penjualan (PO) jika faktur ini terhubung ke pesanan
+      if (currentInv?.pesanan_id) {
+        await supabase
+          .from('pesanan_penjualan')
+          .update({
+            status_bayar: isLunasNow ? 'LUNAS' : 'BELUM_BAYAR',
+          })
+          .eq('id', currentInv.pesanan_id);
+      }
 
       // Post Balanced Journal Entry (Debit: Kas/Bank, Kredit: Piutang Usaha)
       const targetAccount = accounts.find((a) => a.id === payForm.bankAccountId);
