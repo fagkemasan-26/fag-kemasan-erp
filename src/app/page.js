@@ -510,11 +510,19 @@ export default function EternalPackagingERPWorkspace() {
   const [payFlowDropdownOpen, setPayFlowDropdownOpen] = useState(false);
   const [soGetFromModalOpen, setSoGetFromModalOpen] = useState(false);
   const [piSearchQuery, setPiSearchQuery] = useState('');
+  const [soOnlyUnfinished, setSoOnlyUnfinished] = useState(true);
+  const [soCustomerFilterActive, setSoCustomerFilterActive] = useState(true);
+
   const [doGetFromModalOpen, setDoGetFromModalOpen] = useState(false);
   const [doSearchQuery, setDoSearchQuery] = useState('');
+  const [doOnlyUnfinished, setDoOnlyUnfinished] = useState(true);
+  const [doCustomerFilterActive, setDoCustomerFilterActive] = useState(true);
+
   const [siGetFromModalOpen, setSiGetFromModalOpen] = useState(false);
   const [siSearchQuery, setSiSearchQuery] = useState('');
   const [siTakeTab, setSiTakeTab] = useState('DO'); // 'DO' or 'PO'
+  const [siOnlyUnfinished, setSiOnlyUnfinished] = useState(true);
+  const [siCustomerFilterActive, setSiCustomerFilterActive] = useState(true);
   const [settingsSubTab, setSettingsSubTab] = useState('profil');
   const [activePrintDocTab, setActivePrintDocTab] = useState('SQ');
   const [newBankInput, setNewBankInput] = useState({
@@ -9625,7 +9633,16 @@ export default function EternalPackagingERPWorkspace() {
       {/* ACCURATE ONLINE: MODAL AMBIL DARI PROFORMA INVOICE (PI) KE PESANAN (PO) */}
       {soGetFromModalOpen && (() => {
         const qLower = (piSearchQuery || '').toLowerCase().trim();
+        const activeCustId = soCustomerFilterActive && soForm.customerId ? soForm.customerId : null;
+        const currentCustomer = contacts.find((c) => c.id === soForm.customerId);
+
         const filteredPIs = quotations.filter((q) => {
+          if (activeCustId && q.customer_id !== activeCustId) return false;
+          const isFinished =
+            q.status === 'SELESAI' ||
+            salesOrders.some((po) => po.penawaran_id === q.id || (po.catatan && q.no_penawaran && po.catatan.includes(q.no_penawaran)));
+          if (soOnlyUnfinished && isFinished) return false;
+
           if (!qLower) return true;
           const no = (q.no_penawaran || '').toLowerCase();
           const cust = (q.customer?.nama || '').toLowerCase();
@@ -9679,7 +9696,38 @@ export default function EternalPackagingERPWorkspace() {
                 </button>
               </div>
 
-              {/* Live Search & Counter Bar */}
+              {/* Trigger & Smart Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                  {soForm.customerId && (
+                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-medium border border-emerald-300">
+                      <span className="text-[10px] uppercase font-bold text-emerald-800">Pelanggan:</span>
+                      <span className="font-bold text-xs">{currentCustomer?.nama || 'Terpilih'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSoCustomerFilterActive(!soCustomerFilterActive)}
+                        className="ml-1 text-[10px] underline hover:text-emerald-700 font-semibold cursor-pointer"
+                      >
+                        {soCustomerFilterActive ? '(Lihat Semua Pelanggan)' : '(Kunci Pelanggan Ini)'}
+                      </button>
+                    </div>
+                  )}
+                  <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700 font-semibold select-none">
+                    <input
+                      type="checkbox"
+                      checked={soOnlyUnfinished}
+                      onChange={(e) => setSoOnlyUnfinished(e.target.checked)}
+                      className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-700 w-3.5 h-3.5"
+                    />
+                    <span className="text-xs">Hanya yang Belum Dibuat PO (Outstanding)</span>
+                  </label>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {filteredPIs.length} dari {quotations.length} PI
+                </span>
+              </div>
+
+              {/* Live Search Bar */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                 <div className="relative flex-1">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -9701,14 +9749,9 @@ export default function EternalPackagingERPWorkspace() {
                     </button>
                   )}
                 </div>
-                <div className="text-right flex items-center justify-between sm:justify-end space-x-2 text-[11px] text-slate-500 px-1">
-                  <span>
-                    Menampilkan <strong>{filteredPIs.length}</strong> dari <strong>{quotations.length}</strong> Proforma Invoice
-                  </span>
-                </div>
               </div>
 
-              {/* Scalable List Container (Handles 10, 20, 50, 100+ documents effortlessly) */}
+              {/* Scalable List Container */}
               <div className="flex-1 overflow-y-auto max-h-[55vh] border border-slate-200 rounded-lg bg-slate-50/50 divide-y divide-slate-200">
                 {quotations.length === 0 ? (
                   <div className="text-center py-12 text-slate-400 bg-white">
@@ -9730,19 +9773,47 @@ export default function EternalPackagingERPWorkspace() {
                     </button>
                   </div>
                 ) : filteredPIs.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 bg-white">
-                    <Search className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-500" />
-                    <p className="text-xs font-bold text-slate-700">Tidak ada Proforma Invoice yang cocok</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
-                      Tidak ditemukan hasil untuk pencarian &quot;{piSearchQuery}&quot;
+                  <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                    <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                    <p className="text-xs font-bold text-slate-700">
+                      {activeCustId
+                        ? `Semua PI untuk pelanggan ${currentCustomer?.nama || ''} sudah selesai diproses ke PO.`
+                        : 'Tidak ada Proforma Invoice yang cocok dengan filter'}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setPiSearchQuery('')}
-                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold"
-                    >
-                      Bersihkan Pencarian
-                    </button>
+                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                      {soOnlyUnfinished
+                        ? 'Dokumen yang telah selesai disembunyikan. Anda dapat menonaktifkan filter "Hanya Outstanding" untuk melihat riwayat PI.'
+                        : 'Tidak ditemukan dokumen yang cocok dengan kata kunci pencarian.'}
+                    </p>
+                    <div className="flex items-center justify-center space-x-2 pt-2">
+                      {soOnlyUnfinished && (
+                        <button
+                          type="button"
+                          onClick={() => setSoOnlyUnfinished(false)}
+                          className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                        >
+                          Lihat yang Sudah Selesai (Arsip)
+                        </button>
+                      )}
+                      {activeCustId && (
+                        <button
+                          type="button"
+                          onClick={() => setSoCustomerFilterActive(false)}
+                          className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                        >
+                          Lihat Semua Pelanggan
+                        </button>
+                      )}
+                      {piSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setPiSearchQuery('')}
+                          className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold"
+                        >
+                          Bersihkan Pencarian
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   filteredPIs.map((q) => {
@@ -9751,6 +9822,9 @@ export default function EternalPackagingERPWorkspace() {
                     const itemsSummary = detailList
                       .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} ${d.satuan || d.produk?.satuan || 'Pcs'})`)
                       .join(', ');
+                    const isFinished =
+                      q.status === 'SELESAI' ||
+                      salesOrders.some((po) => po.penawaran_id === q.id || (po.catatan && q.no_penawaran && po.catatan.includes(q.no_penawaran)));
 
                     return (
                       <div
@@ -9772,8 +9846,14 @@ export default function EternalPackagingERPWorkspace() {
                             <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
                               {q.no_penawaran}
                             </span>
-                            <span className="text-[10px] px-2 py-0.2 bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold rounded">
-                              {q.status || 'DISETUJUI'}
+                            <span
+                              className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                isFinished
+                                  ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              }`}
+                            >
+                              {isFinished ? 'SUDAH JADI PO (SELESAI)' : q.status || 'DISETUJUI'}
                             </span>
                             <span className="text-[11px] text-slate-400 font-medium">
                               • Tanggal: {q.tanggal}
@@ -9845,7 +9925,18 @@ export default function EternalPackagingERPWorkspace() {
       {/* ACCURATE ONLINE: MODAL AMBIL DARI PESANAN (PO) KE SURAT JALAN (DO) */}
       {doGetFromModalOpen && (() => {
         const qLower = (doSearchQuery || '').toLowerCase().trim();
+        const activeCustId = doCustomerFilterActive && doForm.customerId ? doForm.customerId : null;
+        const currentCustomer = contacts.find((c) => c.id === doForm.customerId);
+
         const filteredPOs = salesOrders.filter((po) => {
+          if (activeCustId && po.customer_id !== activeCustId) return false;
+          const isShipped =
+            po.status === 'SELESAI' ||
+            deliveryOrders.some(
+              (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
+            );
+          if (doOnlyUnfinished && isShipped) return false;
+
           if (!qLower) return true;
           const no = (po.no_pesanan || '').toLowerCase();
           const cust = (po.customer?.nama || '').toLowerCase();
@@ -9899,7 +9990,38 @@ export default function EternalPackagingERPWorkspace() {
                 </button>
               </div>
 
-              {/* Search Bar */}
+              {/* Trigger & Smart Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                  {doForm.customerId && (
+                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-medium border border-emerald-300">
+                      <span className="text-[10px] uppercase font-bold text-emerald-800">Pelanggan:</span>
+                      <span className="font-bold text-xs">{currentCustomer?.nama || 'Terpilih'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDoCustomerFilterActive(!doCustomerFilterActive)}
+                        className="ml-1 text-[10px] underline hover:text-emerald-700 font-semibold cursor-pointer"
+                      >
+                        {doCustomerFilterActive ? '(Lihat Semua Pelanggan)' : '(Kunci Pelanggan Ini)'}
+                      </button>
+                    </div>
+                  )}
+                  <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700 font-semibold select-none">
+                    <input
+                      type="checkbox"
+                      checked={doOnlyUnfinished}
+                      onChange={(e) => setDoOnlyUnfinished(e.target.checked)}
+                      className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-700 w-3.5 h-3.5"
+                    />
+                    <span className="text-xs">Hanya yang Belum Dikirim (Outstanding)</span>
+                  </label>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {filteredPOs.length} dari {salesOrders.length} Pesanan
+                </span>
+              </div>
+
+              {/* Live Search Bar */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                 <div className="relative flex-1">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -9921,11 +10043,6 @@ export default function EternalPackagingERPWorkspace() {
                     </button>
                   )}
                 </div>
-                <div className="text-right flex items-center justify-between sm:justify-end space-x-2 text-[11px] text-slate-500 px-1">
-                  <span>
-                    Menampilkan <strong>{filteredPOs.length}</strong> dari <strong>{salesOrders.length}</strong> Pesanan
-                  </span>
-                </div>
               </div>
 
               {/* List */}
@@ -9939,19 +10056,47 @@ export default function EternalPackagingERPWorkspace() {
                     </p>
                   </div>
                 ) : filteredPOs.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 bg-white">
-                    <Search className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-500" />
-                    <p className="text-xs font-bold text-slate-700">Tidak ada Pesanan yang cocok</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
-                      Tidak ditemukan hasil untuk pencarian &quot;{doSearchQuery}&quot;
+                  <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                    <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                    <p className="text-xs font-bold text-slate-700">
+                      {activeCustId
+                        ? `Semua pesanan untuk pelanggan ${currentCustomer?.nama || ''} sudah selesai dikirim (100%).`
+                        : 'Tidak ada Pesanan yang cocok dengan filter'}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setDoSearchQuery('')}
-                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold"
-                    >
-                      Bersihkan Pencarian
-                    </button>
+                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                      {doOnlyUnfinished
+                        ? 'Pesanan yang telah 100% selesai dikirim disembunyikan. Anda dapat menonaktifkan filter "Hanya Outstanding" untuk melihat seluruh riwayat pesanan.'
+                        : 'Tidak ditemukan dokumen pesanan yang cocok dengan kata kunci pencarian.'}
+                    </p>
+                    <div className="flex items-center justify-center space-x-2 pt-2">
+                      {doOnlyUnfinished && (
+                        <button
+                          type="button"
+                          onClick={() => setDoOnlyUnfinished(false)}
+                          className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                        >
+                          Lihat Pesanan Selesai (Arsip)
+                        </button>
+                      )}
+                      {activeCustId && (
+                        <button
+                          type="button"
+                          onClick={() => setDoCustomerFilterActive(false)}
+                          className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                        >
+                          Lihat Semua Pelanggan
+                        </button>
+                      )}
+                      {doSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setDoSearchQuery('')}
+                          className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold"
+                        >
+                          Bersihkan Pencarian
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   filteredPOs.map((po) => {
@@ -9960,6 +10105,11 @@ export default function EternalPackagingERPWorkspace() {
                     const itemsSummary = detailList
                       .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} ${d.satuan || d.produk?.satuan || 'Pcs'})`)
                       .join(', ');
+                    const isShipped =
+                      po.status === 'SELESAI' ||
+                      deliveryOrders.some(
+                        (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
+                      );
 
                     return (
                       <div
@@ -9976,8 +10126,14 @@ export default function EternalPackagingERPWorkspace() {
                             <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
                               {po.no_pesanan}
                             </span>
-                            <span className="text-[10px] px-2 py-0.2 bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold rounded">
-                              {po.status || 'MENUNGGU_PENGIRIMAN'}
+                            <span
+                              className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                isShipped
+                                  ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              }`}
+                            >
+                              {isShipped ? 'SUDAH DIKIRIM (SELESAI)' : po.status || 'MENUNGGU_PENGIRIMAN'}
                             </span>
                             <span className="text-[11px] text-slate-400 font-medium">
                               • Tanggal: {po.tanggal}
@@ -10044,6 +10200,41 @@ export default function EternalPackagingERPWorkspace() {
       {/* ACCURATE ONLINE: MODAL AMBIL DARI DO / PO KE INVOICE (SI) */}
       {siGetFromModalOpen && (() => {
         const qLower = (siSearchQuery || '').toLowerCase().trim();
+        const activeCustId = siCustomerFilterActive && siForm.customerId ? siForm.customerId : null;
+        const currentCustomer = contacts.find((c) => c.id === siForm.customerId);
+
+        const filteredDOs = deliveryOrders.filter((doo) => {
+          if (activeCustId && doo.customer_id !== activeCustId) return false;
+          const isInvoiced =
+            doo.status === 'SELESAI' ||
+            salesInvoices.some(
+              (inv) => inv.doId === doo.id || (inv.catatan && doo.no_surat_jalan && inv.catatan.includes(doo.no_surat_jalan))
+            );
+          if (siOnlyUnfinished && isInvoiced) return false;
+
+          if (!qLower) return true;
+          const no = (doo.no_surat_jalan || '').toLowerCase();
+          const cust = (doo.customer?.nama || '').toLowerCase();
+          const tgl = (doo.tanggal || '').toLowerCase();
+          const eksp = (doo.ekspedisi || '').toLowerCase();
+          return no.includes(qLower) || cust.includes(qLower) || tgl.includes(qLower) || eksp.includes(qLower);
+        });
+
+        const filteredPOs = salesOrders.filter((po) => {
+          if (activeCustId && po.customer_id !== activeCustId) return false;
+          const isInvoiced =
+            salesInvoices.some(
+              (inv) => inv.pesanan_id === po.id || (inv.catatan && po.no_pesanan && inv.catatan.includes(po.no_pesanan))
+            ) ||
+            (po.status === 'SELESAI' && po.status_bayar === 'LUNAS');
+          if (siOnlyUnfinished && isInvoiced) return false;
+
+          if (!qLower) return true;
+          const no = (po.no_pesanan || '').toLowerCase();
+          const cust = (po.customer?.nama || '').toLowerCase();
+          const tgl = (po.tanggal || '').toLowerCase();
+          return no.includes(qLower) || cust.includes(qLower) || tgl.includes(qLower);
+        });
 
         return (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
@@ -10091,7 +10282,7 @@ export default function EternalPackagingERPWorkspace() {
                   <Truck className="w-3.5 h-3.5" />
                   <span>1. Dari Pengiriman (DO)</span>
                   <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">
-                    {deliveryOrders.length}
+                    {filteredDOs.length} / {deliveryOrders.length}
                   </span>
                 </button>
                 <button
@@ -10106,9 +10297,40 @@ export default function EternalPackagingERPWorkspace() {
                   <ShoppingCart className="w-3.5 h-3.5" />
                   <span>2. Langsung Dari Pesanan (PO)</span>
                   <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">
-                    {salesOrders.length}
+                    {filteredPOs.length} / {salesOrders.length}
                   </span>
                 </button>
+              </div>
+
+              {/* Trigger & Smart Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                  {siForm.customerId && (
+                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-medium border border-emerald-300">
+                      <span className="text-[10px] uppercase font-bold text-emerald-800">Pelanggan:</span>
+                      <span className="font-bold text-xs">{currentCustomer?.nama || 'Terpilih'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSiCustomerFilterActive(!siCustomerFilterActive)}
+                        className="ml-1 text-[10px] underline hover:text-emerald-700 font-semibold cursor-pointer"
+                      >
+                        {siCustomerFilterActive ? '(Lihat Semua Pelanggan)' : '(Kunci Pelanggan Ini)'}
+                      </button>
+                    </div>
+                  )}
+                  <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700 font-semibold select-none">
+                    <input
+                      type="checkbox"
+                      checked={siOnlyUnfinished}
+                      onChange={(e) => setSiOnlyUnfinished(e.target.checked)}
+                      className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-700 w-3.5 h-3.5"
+                    />
+                    <span className="text-xs">Hanya yang Belum Ditagih (Outstanding)</span>
+                  </label>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {siTakeTab === 'DO' ? `${filteredDOs.length} DO` : `${filteredPOs.length} PO`}
+                </span>
               </div>
 
               {/* Search Bar */}
@@ -10142,40 +10364,60 @@ export default function EternalPackagingERPWorkspace() {
               {/* List Container */}
               <div className="flex-1 overflow-y-auto max-h-[55vh] border border-slate-200 rounded-lg bg-slate-50/50 divide-y divide-slate-200">
                 {siTakeTab === 'DO' ? (
-                  (() => {
-                    const filteredDOs = deliveryOrders.filter((doo) => {
-                      if (!qLower) return true;
-                      const no = (doo.no_surat_jalan || '').toLowerCase();
-                      const cust = (doo.customer?.nama || '').toLowerCase();
-                      const tgl = (doo.tanggal || '').toLowerCase();
-                      const eksp = (doo.ekspedisi || '').toLowerCase();
-                      return no.includes(qLower) || cust.includes(qLower) || tgl.includes(qLower) || eksp.includes(qLower);
-                    });
-
-                    if (deliveryOrders.length === 0) {
-                      return (
-                        <div className="text-center py-12 text-slate-400 bg-white">
-                          <Truck className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
-                          <p className="text-xs font-bold text-slate-700">Belum Ada Surat Jalan (DO)</p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Terbitkan Surat Jalan terlebih dahulu di menu Pengiriman (DO).
-                          </p>
-                        </div>
-                      );
-                    }
-                    if (filteredDOs.length === 0) {
-                      return (
-                        <div className="text-center py-10 text-slate-400 bg-white">
-                          <p className="text-xs font-bold text-slate-700">Tidak ada Surat Jalan yang cocok</p>
-                        </div>
-                      );
-                    }
-                    return filteredDOs.map((doo) => {
+                  deliveryOrders.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 bg-white">
+                      <Truck className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
+                      <p className="text-xs font-bold text-slate-700">Belum Ada Surat Jalan (DO)</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Terbitkan Surat Jalan terlebih dahulu di menu Pengiriman (DO).
+                      </p>
+                    </div>
+                  ) : filteredDOs.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                      <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                      <p className="text-xs font-bold text-slate-700">
+                        {activeCustId
+                          ? `Semua Surat Jalan untuk pelanggan ${currentCustomer?.nama || ''} sudah selesai difakturkan.`
+                          : 'Tidak ada Surat Jalan yang cocok dengan filter'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        {siOnlyUnfinished
+                          ? 'Surat jalan yang telah ditagih disembunyikan. Nonaktifkan filter "Hanya Outstanding" untuk melihat seluruh riwayat pengiriman.'
+                          : 'Tidak ditemukan dokumen yang cocok dengan pencarian.'}
+                      </p>
+                      <div className="flex items-center justify-center space-x-2 pt-2">
+                        {siOnlyUnfinished && (
+                          <button
+                            type="button"
+                            onClick={() => setSiOnlyUnfinished(false)}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat DO yang Sudah Ditagih (Arsip)
+                          </button>
+                        )}
+                        {activeCustId && (
+                          <button
+                            type="button"
+                            onClick={() => setSiCustomerFilterActive(false)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat Semua Pelanggan
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredDOs.map((doo) => {
                       const detailList = doo.pengiriman_pesanan_detail || [];
                       const itemCount = detailList.length;
                       const itemsSummary = detailList
                         .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} Pcs)`)
                         .join(', ');
+                      const isInvoiced =
+                        doo.status === 'SELESAI' ||
+                        salesInvoices.some(
+                          (inv) => inv.doId === doo.id || (inv.catatan && doo.no_surat_jalan && inv.catatan.includes(doo.no_surat_jalan))
+                        );
 
                       return (
                         <div
@@ -10192,8 +10434,14 @@ export default function EternalPackagingERPWorkspace() {
                               <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
                                 {doo.no_surat_jalan}
                               </span>
-                              <span className="text-[10px] px-2 py-0.2 bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold rounded">
-                                {doo.status || 'TERKIRIM'}
+                              <span
+                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                  isInvoiced
+                                    ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                }`}
+                              >
+                                {isInvoiced ? 'SUDAH DITAGIH (SELESAI)' : doo.status || 'TERKIRIM'}
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
                                 • Tanggal: {doo.tanggal}
@@ -10224,39 +10472,60 @@ export default function EternalPackagingERPWorkspace() {
                           </button>
                         </div>
                       );
-                    });
-                  })()
+                    })
+                  )
                 ) : (
-                  (() => {
-                    const filteredPOs = salesOrders.filter((po) => {
-                      if (!qLower) return true;
-                      const no = (po.no_pesanan || '').toLowerCase();
-                      const cust = (po.customer?.nama || '').toLowerCase();
-                      const tgl = (po.tanggal || '').toLowerCase();
-                      return no.includes(qLower) || cust.includes(qLower) || tgl.includes(qLower);
-                    });
-
-                    if (salesOrders.length === 0) {
-                      return (
-                        <div className="text-center py-12 text-slate-400 bg-white">
-                          <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
-                          <p className="text-xs font-bold text-slate-700">Belum Ada Pesanan Penjualan</p>
-                        </div>
-                      );
-                    }
-                    if (filteredPOs.length === 0) {
-                      return (
-                        <div className="text-center py-10 text-slate-400 bg-white">
-                          <p className="text-xs font-bold text-slate-700">Tidak ada Pesanan yang cocok</p>
-                        </div>
-                      );
-                    }
-                    return filteredPOs.map((po) => {
+                  salesOrders.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 bg-white">
+                      <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
+                      <p className="text-xs font-bold text-slate-700">Belum Ada Pesanan Penjualan</p>
+                    </div>
+                  ) : filteredPOs.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                      <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                      <p className="text-xs font-bold text-slate-700">
+                        {activeCustId
+                          ? `Semua Pesanan untuk pelanggan ${currentCustomer?.nama || ''} sudah selesai difakturkan / lunas.`
+                          : 'Tidak ada Pesanan yang cocok dengan filter'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        {siOnlyUnfinished
+                          ? 'Pesanan yang telah ditagih disembunyikan. Nonaktifkan filter "Hanya Outstanding" untuk melihat seluruh riwayat pesanan.'
+                          : 'Tidak ditemukan pesanan yang cocok dengan pencarian.'}
+                      </p>
+                      <div className="flex items-center justify-center space-x-2 pt-2">
+                        {siOnlyUnfinished && (
+                          <button
+                            type="button"
+                            onClick={() => setSiOnlyUnfinished(false)}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat Pesanan yang Sudah Ditagih (Arsip)
+                          </button>
+                        )}
+                        {activeCustId && (
+                          <button
+                            type="button"
+                            onClick={() => setSiCustomerFilterActive(false)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat Semua Pelanggan
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredPOs.map((po) => {
                       const detailList = po.pesanan_penjualan_detail || [];
                       const itemCount = detailList.length;
                       const itemsSummary = detailList
                         .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} Pcs)`)
                         .join(', ');
+                      const isInvoiced =
+                        salesInvoices.some(
+                          (inv) => inv.pesanan_id === po.id || (inv.catatan && po.no_pesanan && inv.catatan.includes(po.no_pesanan))
+                        ) ||
+                        (po.status === 'SELESAI' && po.status_bayar === 'LUNAS');
 
                       return (
                         <div
@@ -10273,8 +10542,14 @@ export default function EternalPackagingERPWorkspace() {
                               <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
                                 {po.no_pesanan}
                               </span>
-                              <span className="text-[10px] px-2 py-0.2 bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold rounded">
-                                {po.status || 'MENUNGGU_PENGIRIMAN'}
+                              <span
+                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                  isInvoiced
+                                    ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                }`}
+                              >
+                                {isInvoiced ? 'SUDAH DITAGIH' : po.status || 'MENUNGGU_PENGIRIMAN'}
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
                                 • Tanggal: {po.tanggal}
@@ -10313,8 +10588,8 @@ export default function EternalPackagingERPWorkspace() {
                           </div>
                         </div>
                       );
-                    });
-                  })()
+                    })
+                  )
                 )}
               </div>
 

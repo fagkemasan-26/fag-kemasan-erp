@@ -192,6 +192,9 @@ export default function PurchaseModule({
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [takeModalType, setTakeModalType] = useState(null); // 'PO_TO_RI' | 'RI_TO_FB' | 'PO_TO_FB' | null
+  const [takeSearchQuery, setTakeSearchQuery] = useState('');
+  const [takeModalOnlyUnfinished, setTakeModalOnlyUnfinished] = useState(true);
+  const [takeModalSupplierFilterActive, setTakeModalSupplierFilterActive] = useState(true);
   const [pdfModalDoc, setPdfModalDoc] = useState(null); // { type: 'PO'|'RI'|'FB'|'PP', data: {...} }
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null); // { type, id, noDoc, data }
   // Item Detail Pop-up Modal (Parity with Sales ItemDetailModal)
@@ -4839,168 +4842,595 @@ export default function PurchaseModule({
       {/* ======================================================== */}
       {/* MODAL: AMBIL DOKUMEN (TAKE FLOW: PO -> RI -> FB)         */}
       {/* ======================================================== */}
-      {takeModalType && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
-            <div className="flex items-center justify-between px-5 py-3.5 bg-[#0A3828] text-white">
-              <h3 className="font-extrabold text-sm">
-                {takeModalType === 'PO_TO_RI' && 'Ambil Barang dari Pesanan Pembelian (PO)'}
-                {takeModalType === 'RI_TO_FB' && 'Ambil Barang dari Penerimaan Barang (RI)'}
-                {takeModalType === 'PO_TO_FB' && 'Ambil Tagihan dari Pesanan Pembelian (PO)'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setTakeModalType(null)}
-                className="text-emerald-200 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {takeModalType && (() => {
+        const isFromRI = takeModalType === 'PO_TO_RI';
+        const currentSupplierId = isFromRI ? riForm.supplierId : piForm.supplierId;
+        const currentSupplier = suppliers.find((s) => s.id === currentSupplierId);
+        const effectiveSupplierId = takeModalSupplierFilterActive && currentSupplierId ? currentSupplierId : null;
+        const q = (takeSearchQuery || '').toLowerCase().trim();
 
-            <div className="p-4 space-y-2.5 max-h-96 overflow-y-auto text-xs">
-              {takeModalType === 'PO_TO_RI' && (
-                <>
-                  <p className="text-slate-500 mb-2">
-                    Pilih Pesanan Pembelian (PO) yang barangnya telah tiba di gudang:
-                  </p>
-                  {purchaseOrders.filter((po) => po.status !== 'SELESAI').length === 0 ? (
-                    <div className="py-8 text-center text-slate-400">
-                      Tidak ada PO yang sedang menunggu penerimaan.
+        // 1. PO TO RI
+        const filteredPOsForRI = purchaseOrders.filter((po) => {
+          if (effectiveSupplierId && po.supplier_id !== effectiveSupplierId) return false;
+          const isReceived =
+            po.status === 'SELESAI' ||
+            goodsReceipts.some(
+              (ri) => ri.pesanan_id === po.id || (ri.keterangan && po.no_pesanan && ri.keterangan.includes(po.no_pesanan))
+            );
+          if (takeModalOnlyUnfinished && isReceived) return false;
+          if (!q) return true;
+          const no = (po.no_pesanan || '').toLowerCase();
+          const sup = (po.supplier?.nama || '').toLowerCase();
+          const tgl = (po.tanggal || '').toLowerCase();
+          const items = (po.pesanan_pembelian_detail || [])
+            .map((d) => d.produk?.nama || '')
+            .join(' ')
+            .toLowerCase();
+          return no.includes(q) || sup.includes(q) || tgl.includes(q) || items.includes(q);
+        });
+
+        // 2. RI TO FB
+        const filteredRIs = goodsReceipts.filter((ri) => {
+          if (effectiveSupplierId && ri.supplier_id !== effectiveSupplierId) return false;
+          const isBilled =
+            ri.status === 'SELESAI' ||
+            purchases.some(
+              (fb) => fb.penerimaan_id === ri.id || (fb.catatan && ri.no_terima && fb.catatan.includes(ri.no_terima))
+            );
+          if (takeModalOnlyUnfinished && isBilled) return false;
+          if (!q) return true;
+          const no = (ri.no_terima || '').toLowerCase();
+          const sup = (ri.supplier?.nama || '').toLowerCase();
+          const sj = (ri.no_surat_jalan_supplier || '').toLowerCase();
+          const tgl = (ri.tanggal || '').toLowerCase();
+          const items = (ri.penerimaan_barang_detail || [])
+            .map((d) => d.produk?.nama || '')
+            .join(' ')
+            .toLowerCase();
+          return no.includes(q) || sup.includes(q) || sj.includes(q) || tgl.includes(q) || items.includes(q);
+        });
+
+        // 3. PO TO FB
+        const filteredPOsForFB = purchaseOrders.filter((po) => {
+          if (effectiveSupplierId && po.supplier_id !== effectiveSupplierId) return false;
+          const isBilled =
+            (po.status === 'SELESAI' && po.status_bayar === 'LUNAS') ||
+            purchases.some(
+              (fb) => fb.pesanan_id === po.id || (fb.catatan && po.no_pesanan && fb.catatan.includes(po.no_pesanan))
+            );
+          if (takeModalOnlyUnfinished && isBilled) return false;
+          if (!q) return true;
+          const no = (po.no_pesanan || '').toLowerCase();
+          const sup = (po.supplier?.nama || '').toLowerCase();
+          const tgl = (po.tanggal || '').toLowerCase();
+          const items = (po.pesanan_pembelian_detail || [])
+            .map((d) => d.produk?.nama || '')
+            .join(' ')
+            .toLowerCase();
+          return no.includes(q) || sup.includes(q) || tgl.includes(q) || items.includes(q);
+        });
+
+        const activeCount =
+          takeModalType === 'PO_TO_RI'
+            ? filteredPOsForRI.length
+            : takeModalType === 'RI_TO_FB'
+            ? filteredRIs.length
+            : filteredPOsForFB.length;
+
+        const totalCount =
+          takeModalType === 'PO_TO_RI'
+            ? purchaseOrders.length
+            : takeModalType === 'RI_TO_FB'
+            ? goodsReceipts.length
+            : purchaseOrders.length;
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full p-5 space-y-3.5 border border-slate-200 animate-in fade-in zoom-in-95 duration-100 flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-900 flex items-center justify-center font-black text-xs border border-emerald-300 shadow-2xs">
+                    {takeModalType === 'PO_TO_RI' ? 'RI' : 'FB'}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
+                        {takeModalType === 'PO_TO_RI' && 'Ambil Barang dari Pesanan Pembelian (PO)'}
+                        {takeModalType === 'RI_TO_FB' && 'Ambil Barang dari Penerimaan Barang (RI)'}
+                        {takeModalType === 'PO_TO_FB' && 'Ambil Tagihan Langsung dari Pesanan (PO)'}
+                      </h3>
+                      <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-800 font-bold rounded-full border border-emerald-200">
+                        {totalCount} Dokumen Tersedia
+                      </span>
                     </div>
-                  ) : (
-                    purchaseOrders
-                      .filter((po) => po.status !== 'SELESAI')
-                      .map((po) => (
-                        <div
-                          key={po.id}
-                          onClick={() => handleTakePOIntoRI(po)}
-                          className="p-3 border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl cursor-pointer flex justify-between items-center transition"
-                        >
-                          <div>
-                            <span className="font-mono font-bold text-emerald-900 mr-2">{po.no_pesanan}</span>
-                            <strong className="text-slate-800">{po.supplier?.nama}</strong>
-                            <span className="text-slate-400 block text-[11px] mt-0.5">
-                              Tgl: {po.tanggal} • {po.pesanan_pembelian_detail?.length || 0} item barang
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-mono font-bold text-slate-900 block">
-                              Rp {Number(po.total || 0).toLocaleString('id-ID')}
-                            </span>
-                            <span className="text-[10px] text-emerald-700 font-bold inline-flex items-center space-x-1">
-                              <span>Pilih PO Ini</span>
-                              <ChevronRight className="w-3 h-3" />
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                  )}
-                </>
-              )}
+                    <p className="text-[11px] text-slate-500">
+                      {takeModalType === 'PO_TO_RI' &&
+                        'Pilih PO Pembelian yang barangnya telah sampai di gudang untuk ditarik ke Penerimaan Barang'}
+                      {takeModalType === 'RI_TO_FB' &&
+                        'Pilih Surat Penerimaan Barang (RI) untuk diterbitkan Faktur Pembelian (FB)'}
+                      {takeModalType === 'PO_TO_FB' &&
+                        'Pilih Pesanan Pembelian (PO) untuk langsung ditagihkan ke Faktur Pembelian (FB)'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTakeModalType(null);
+                    setTakeSearchQuery('');
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
+              {/* Tab Selector for Invoicing (RI vs PO) */}
               {(takeModalType === 'RI_TO_FB' || takeModalType === 'PO_TO_FB') && (
-                <div className="flex items-center space-x-1.5 mb-2 pb-2 border-b border-slate-100">
+                <div className="flex items-center space-x-2 border-b border-slate-200 pb-2">
                   <button
                     type="button"
                     onClick={() => setTakeModalType('RI_TO_FB')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
                       takeModalType === 'RI_TO_FB'
-                        ? 'bg-emerald-800 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        ? 'bg-emerald-800 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    1. Dari Penerimaan Barang (RI)
+                    <Truck className="w-3.5 h-3.5" />
+                    <span>1. Dari Penerimaan Barang (RI)</span>
+                    <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">
+                      {filteredRIs.length} / {goodsReceipts.length}
+                    </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTakeModalType('PO_TO_FB')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
                       takeModalType === 'PO_TO_FB'
-                        ? 'bg-emerald-800 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        ? 'bg-emerald-800 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    2. Langsung Dari Pesanan (PO)
+                    <Package className="w-3.5 h-3.5" />
+                    <span>2. Langsung Dari Pesanan (PO)</span>
+                    <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">
+                      {filteredPOsForFB.length} / {purchaseOrders.length}
+                    </span>
                   </button>
                 </div>
               )}
 
-              {takeModalType === 'RI_TO_FB' && (
-                <>
-                  <p className="text-slate-500 mb-2">
-                    Pilih Penerimaan Barang (RI) untuk diterbitkan Faktur Pembelian:
-                  </p>
-                  {goodsReceipts.length === 0 ? (
-                    <div className="py-8 text-center text-slate-400">Belum ada penerimaan barang tercatat.</div>
-                  ) : (
-                    goodsReceipts.map((ri) => (
-                      <div
-                        key={ri.id}
-                        onClick={() => handleTakeRIIntoFB(ri)}
-                        className="p-3 border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl cursor-pointer flex justify-between items-center transition"
+              {/* Trigger & Smart Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                  {currentSupplierId && (
+                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-medium border border-emerald-300">
+                      <span className="text-[10px] uppercase font-bold text-emerald-800">Supplier:</span>
+                      <span className="font-bold text-xs">{currentSupplier?.nama || 'Terpilih'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setTakeModalSupplierFilterActive(!takeModalSupplierFilterActive)}
+                        className="ml-1 text-[10px] underline hover:text-emerald-700 font-semibold cursor-pointer"
                       >
-                        <div>
-                          <span className="font-mono font-bold text-emerald-900 mr-2">{ri.no_terima}</span>
-                          <strong className="text-slate-800">{ri.supplier?.nama}</strong>
-                          <span className="text-slate-400 block text-[11px] mt-0.5">
-                            SJ: {ri.no_surat_jalan_supplier || '-'} • Tgl: {ri.tanggal} • {ri.penerimaan_barang_detail?.length || 0} item
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-emerald-700 font-bold inline-flex items-center space-x-1">
-                            <span>Pilih RI Ini</span>
-                            <ChevronRight className="w-3 h-3" />
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                        {takeModalSupplierFilterActive ? '(Lihat Semua Supplier)' : '(Kunci Supplier Ini)'}
+                      </button>
+                    </div>
                   )}
-                </>
-              )}
+                  <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700 font-semibold select-none">
+                    <input
+                      type="checkbox"
+                      checked={takeModalOnlyUnfinished}
+                      onChange={(e) => setTakeModalOnlyUnfinished(e.target.checked)}
+                      className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-700 w-3.5 h-3.5"
+                    />
+                    <span className="text-xs">Hanya yang Belum Selesai (Outstanding)</span>
+                  </label>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {activeCount} dari {totalCount} Dokumen
+                </span>
+              </div>
 
-              {takeModalType === 'PO_TO_FB' && (
-                <>
-                  <p className="text-slate-500 mb-2">
-                    Pilih Pesanan Pembelian (PO) untuk langsung diterbitkan Faktur Pembelian:
-                  </p>
-                  {purchaseOrders.filter((po) => po.status !== 'SELESAI').length === 0 ? (
-                    <div className="py-8 text-center text-slate-400">
-                      Tidak ada pesanan pembelian (PO) aktif yang menunggu faktur.
+              {/* Live Search Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={takeSearchQuery}
+                    onChange={(e) => setTakeSearchQuery(e.target.value)}
+                    placeholder="Cari nomor dokumen, nama supplier, rincian barang kemasan..."
+                    className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 outline-none focus:ring-1 focus:ring-emerald-700 focus:border-emerald-700"
+                    autoFocus
+                  />
+                  {takeSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setTakeSearchQuery('')}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* List Container */}
+              <div className="flex-1 overflow-y-auto max-h-[55vh] border border-slate-200 rounded-lg bg-slate-50/50 divide-y divide-slate-200">
+                {takeModalType === 'PO_TO_RI' &&
+                  (purchaseOrders.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 bg-white">
+                      <Package className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
+                      <p className="text-xs font-bold text-slate-700">Belum Ada Pesanan Pembelian (PO)</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Buat Pesanan Pembelian baru terlebih dahulu di menu Pesanan (PO Beli).
+                      </p>
+                    </div>
+                  ) : filteredPOsForRI.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                      <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                      <p className="text-xs font-bold text-slate-700">
+                        {effectiveSupplierId
+                          ? `Semua PO untuk supplier ${currentSupplier?.nama || ''} sudah selesai diterima di gudang.`
+                          : 'Tidak ada PO Pembelian yang cocok dengan filter'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        {takeModalOnlyUnfinished
+                          ? 'PO yang sudah 100% tiba di gudang disembunyikan. Nonaktifkan filter "Hanya Outstanding" untuk melihat seluruh riwayat PO.'
+                          : 'Tidak ditemukan PO yang cocok dengan kata kunci pencarian.'}
+                      </p>
+                      <div className="flex items-center justify-center space-x-2 pt-2">
+                        {takeModalOnlyUnfinished && (
+                          <button
+                            type="button"
+                            onClick={() => setTakeModalOnlyUnfinished(false)}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat PO Selesai (Arsip)
+                          </button>
+                        )}
+                        {effectiveSupplierId && (
+                          <button
+                            type="button"
+                            onClick={() => setTakeModalSupplierFilterActive(false)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat Semua Supplier
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    purchaseOrders
-                      .filter((po) => po.status !== 'SELESAI')
-                      .map((po) => (
+                    filteredPOsForRI.map((po) => {
+                      const detailList = po.pesanan_pembelian_detail || [];
+                      const itemCount = detailList.length;
+                      const itemsSummary = detailList
+                        .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} ${d.satuan || d.produk?.satuan || 'Pcs'})`)
+                        .join(', ');
+                      const isReceived =
+                        po.status === 'SELESAI' ||
+                        goodsReceipts.some(
+                          (ri) => ri.pesanan_id === po.id || (ri.keterangan && po.no_pesanan && ri.keterangan.includes(po.no_pesanan))
+                        );
+
+                      return (
                         <div
                           key={po.id}
-                          onClick={() => handleTakePOIntoFB(po)}
-                          className="p-3 border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl cursor-pointer flex justify-between items-center transition"
+                          onClick={() => {
+                            handleTakePOIntoRI(po);
+                            setTakeModalType(null);
+                            setTakeSearchQuery('');
+                          }}
+                          className="p-3 bg-white hover:bg-emerald-50/80 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
                         >
-                          <div>
-                            <span className="font-mono font-bold text-emerald-900 mr-2">{po.no_pesanan}</span>
-                            <strong className="text-slate-800">{po.supplier?.nama}</strong>
-                            <span className="text-slate-400 block text-[11px] mt-0.5">
-                              Tgl: {po.tanggal} • {po.pesanan_pembelian_detail?.length || 0} item barang
-                            </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                              <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
+                                {po.no_pesanan}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                  isReceived
+                                    ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                }`}
+                              >
+                                {isReceived ? 'SUDAH DITERIMA (SELESAI)' : po.status || 'MENUNGGU_PENERIMAAN'}
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                • Tanggal: {po.tanggal}
+                              </span>
+                            </div>
+
+                            <div className="mt-1 flex items-center space-x-2">
+                              <span className="text-xs font-bold text-slate-900">
+                                {po.supplier?.nama || 'Supplier'}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5" title={itemsSummary}>
+                              <span className="font-semibold text-slate-600">{itemCount} Rincian Barang:</span>{' '}
+                              {itemsSummary || 'Tidak ada rincian barang'}
+                            </p>
                           </div>
-                          <div className="text-right">
-                            <span className="font-mono font-bold text-slate-900 block">
-                              Rp {Number(po.total || 0).toLocaleString('id-ID')}
-                            </span>
-                            <span className="text-[10px] text-emerald-700 font-bold inline-flex items-center space-x-1">
-                              <span>Pilih PO Ini</span>
-                              <ChevronRight className="w-3 h-3" />
-                            </span>
+
+                          <div className="flex items-center sm:flex-col sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 flex-shrink-0">
+                            <div className="text-left sm:text-right">
+                              <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                                Total Nilai
+                              </span>
+                              <span className="font-mono font-black text-sm text-slate-900">
+                                Rp {Number(po.total || 0).toLocaleString('id-ID')}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="mt-1.5 px-3 py-1 bg-emerald-700 group-hover:bg-emerald-800 text-white rounded-md text-xs font-bold inline-flex items-center space-x-1 shadow-2xs transition"
+                            >
+                              <span>Tarik ke RI</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-                      ))
-                  )}
-                </>
-              )}
+                      );
+                    })
+                  ))}
+
+                {takeModalType === 'RI_TO_FB' &&
+                  (goodsReceipts.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 bg-white">
+                      <Truck className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
+                      <p className="text-xs font-bold text-slate-700">Belum Ada Penerimaan Barang (RI)</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Catat penerimaan barang dari supplier terlebih dahulu di menu Penerimaan (RI).
+                      </p>
+                    </div>
+                  ) : filteredRIs.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                      <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                      <p className="text-xs font-bold text-slate-700">
+                        {effectiveSupplierId
+                          ? `Semua Penerimaan Barang untuk supplier ${currentSupplier?.nama || ''} sudah selesai difakturkan.`
+                          : 'Tidak ada Penerimaan Barang yang cocok dengan filter'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        {takeModalOnlyUnfinished
+                          ? 'Penerimaan yang telah ditagih disembunyikan. Nonaktifkan filter "Hanya Outstanding" untuk melihat seluruh riwayat penerimaan.'
+                          : 'Tidak ditemukan dokumen penerimaan yang cocok.'}
+                      </p>
+                      <div className="flex items-center justify-center space-x-2 pt-2">
+                        {takeModalOnlyUnfinished && (
+                          <button
+                            type="button"
+                            onClick={() => setTakeModalOnlyUnfinished(false)}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat RI yang Sudah Difakturkan (Arsip)
+                          </button>
+                        )}
+                        {effectiveSupplierId && (
+                          <button
+                            type="button"
+                            onClick={() => setTakeModalSupplierFilterActive(false)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat Semua Supplier
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredRIs.map((ri) => {
+                      const detailList = ri.penerimaan_barang_detail || [];
+                      const itemCount = detailList.length;
+                      const itemsSummary = detailList
+                        .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} ${d.satuan || d.produk?.satuan || 'Pcs'})`)
+                        .join(', ');
+                      const isBilled =
+                        ri.status === 'SELESAI' ||
+                        purchases.some(
+                          (fb) => fb.penerimaan_id === ri.id || (fb.catatan && ri.no_terima && fb.catatan.includes(ri.no_terima))
+                        );
+
+                      return (
+                        <div
+                          key={ri.id}
+                          onClick={() => {
+                            handleTakeRIIntoFB(ri);
+                            setTakeModalType(null);
+                            setTakeSearchQuery('');
+                          }}
+                          className="p-3 bg-white hover:bg-emerald-50/80 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                              <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
+                                {ri.no_terima}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                  isBilled
+                                    ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                }`}
+                              >
+                                {isBilled ? 'SUDAH DIFAKTURKAN (SELESAI)' : ri.status || 'DITERIMA'}
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                • Tanggal: {ri.tanggal}
+                              </span>
+                            </div>
+
+                            <div className="mt-1 flex items-center space-x-2">
+                              <span className="text-xs font-bold text-slate-900">
+                                {ri.supplier?.nama || 'Supplier'}
+                              </span>
+                              {ri.no_surat_jalan_supplier && (
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  (SJ: {ri.no_surat_jalan_supplier})
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5" title={itemsSummary}>
+                              <span className="font-semibold text-slate-600">{itemCount} Barang:</span>{' '}
+                              {itemsSummary || 'Tidak ada rincian barang'}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="mt-1.5 px-3 py-1 bg-emerald-700 group-hover:bg-emerald-800 text-white rounded-md text-xs font-bold inline-flex items-center space-x-1 shadow-2xs transition"
+                          >
+                            <span>Fakturkan RI</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  ))}
+
+                {takeModalType === 'PO_TO_FB' &&
+                  (purchaseOrders.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 bg-white">
+                      <Package className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-800" />
+                      <p className="text-xs font-bold text-slate-700">Belum Ada Pesanan Pembelian</p>
+                    </div>
+                  ) : filteredPOsForFB.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 bg-white space-y-2">
+                      <Search className="w-8 h-8 mx-auto opacity-30 text-slate-500" />
+                      <p className="text-xs font-bold text-slate-700">
+                        {effectiveSupplierId
+                          ? `Semua Pesanan untuk supplier ${currentSupplier?.nama || ''} sudah selesai difakturkan / lunas.`
+                          : 'Tidak ada Pesanan yang cocok dengan filter'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        {takeModalOnlyUnfinished
+                          ? 'Pesanan yang telah ditagihkan disembunyikan. Nonaktifkan filter "Hanya Outstanding" untuk melihat seluruh riwayat PO.'
+                          : 'Tidak ditemukan PO yang cocok dengan pencarian.'}
+                      </p>
+                      <div className="flex items-center justify-center space-x-2 pt-2">
+                        {takeModalOnlyUnfinished && (
+                          <button
+                            type="button"
+                            onClick={() => setTakeModalOnlyUnfinished(false)}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat PO yang Sudah Difakturkan (Arsip)
+                          </button>
+                        )}
+                        {effectiveSupplierId && (
+                          <button
+                            type="button"
+                            onClick={() => setTakeModalSupplierFilterActive(false)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition"
+                          >
+                            Lihat Semua Supplier
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredPOsForFB.map((po) => {
+                      const detailList = po.pesanan_pembelian_detail || [];
+                      const itemCount = detailList.length;
+                      const itemsSummary = detailList
+                        .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} ${d.satuan || d.produk?.satuan || 'Pcs'})`)
+                        .join(', ');
+                      const isBilled =
+                        (po.status === 'SELESAI' && po.status_bayar === 'LUNAS') ||
+                        purchases.some(
+                          (fb) => fb.pesanan_id === po.id || (fb.catatan && po.no_pesanan && fb.catatan.includes(po.no_pesanan))
+                        );
+
+                      return (
+                        <div
+                          key={po.id}
+                          onClick={() => {
+                            handleTakePOIntoFB(po);
+                            setTakeModalType(null);
+                            setTakeSearchQuery('');
+                          }}
+                          className="p-3 bg-white hover:bg-emerald-50/80 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                              <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
+                                {po.no_pesanan}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                  isBilled
+                                    ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                }`}
+                              >
+                                {isBilled ? 'SUDAH DIFAKTURKAN' : po.status || 'MENUNGGU_PENERIMAAN'}
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                • Tanggal: {po.tanggal}
+                              </span>
+                            </div>
+
+                            <div className="mt-1 flex items-center space-x-2">
+                              <span className="text-xs font-bold text-slate-900">
+                                {po.supplier?.nama || 'Supplier'}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5" title={itemsSummary}>
+                              <span className="font-semibold text-slate-600">{itemCount} Barang:</span>{' '}
+                              {itemsSummary || 'Tidak ada rincian barang'}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center sm:flex-col sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 flex-shrink-0">
+                            <div className="text-left sm:text-right">
+                              <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                                Total Nilai
+                              </span>
+                              <span className="font-mono font-black text-sm text-slate-900">
+                                Rp {Number(po.total || 0).toLocaleString('id-ID')}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="mt-1.5 px-3 py-1 bg-emerald-700 group-hover:bg-emerald-800 text-white rounded-md text-xs font-bold inline-flex items-center space-x-1 shadow-2xs transition"
+                            >
+                              <span>Fakturkan Langsung</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ))}
+              </div>
+
+              {/* Footer */}
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-slate-500 hidden sm:inline">
+                  💡 Tip: Menarik data dari RI/PO secara otomatis memasukkan rincian harga, kuantitas, dan nama barang tanpa input manual ulang.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTakeModalType(null);
+                    setTakeSearchQuery('');
+                  }}
+                  className="px-4 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-700 hover:bg-slate-100 transition ml-auto"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ======================================================== */}
       {/* MODAL: PRATINJAU / CETAK DOKUMEN PDF (ACCURATE PARITY)   */}
