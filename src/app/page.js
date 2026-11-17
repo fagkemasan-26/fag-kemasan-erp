@@ -1144,10 +1144,20 @@ export default function EternalPackagingERPWorkspace() {
         await supabase.from('pesanan_penjualan_detail').insert(details);
 
         showToast(`Pesanan Penjualan ${soForm.soNo} berhasil diperbarui di Supabase!`, 'success', 'PO Diperbarui');
-        await handleResetToNewSO();
         await loadData();
-        setViewModes((prev) => ({ ...prev, so: 'list' }));
-        return;
+        return {
+          id: soForm.editingId,
+          no_pesanan: soForm.soNo,
+          customer_id: soForm.customerId,
+          termin: soForm.termin,
+          uang_muka: soForm.uangMuka || 0,
+          total: grandTotal,
+          customer: contacts.find((c) => c.id === soForm.customerId) || { nama: 'Pelanggan' },
+          pesanan_penjualan_detail: details.map((d) => ({
+            ...d,
+            produk: products.find((p) => p.id === d.produk_id) || {},
+          })),
+        };
       }
 
       // JIKA MEMBUAT PESANAN BARU
@@ -1178,15 +1188,57 @@ export default function EternalPackagingERPWorkspace() {
       }));
       await supabase.from('pesanan_penjualan_detail').insert(details);
 
-      showToast(`Pesanan Penjualan ${docNo} berhasil disimpan!`, 'success', 'PO Berhasil Disimpan');
-      await handleResetToNewSO();
+      setSoForm((prev) => ({
+        ...prev,
+        editingId: soH.id,
+        soNo: docNo,
+      }));
+      showToast(`Pesanan Penjualan ${docNo} berhasil disimpan! Anda dapat langsung memproses alur ke Surat Jalan (DO) atau Terima DP.`, 'success', 'PO Berhasil Disimpan');
       await loadData();
-      setViewModes((prev) => ({ ...prev, so: 'list' }));
+      return {
+        ...soH,
+        id: soH.id,
+        no_pesanan: docNo,
+        customer_id: soForm.customerId,
+        termin: soForm.termin,
+        uang_muka: 0,
+        total: grandTotal,
+        customer: contacts.find((c) => c.id === soForm.customerId) || { nama: 'Pelanggan' },
+        pesanan_penjualan_detail: details.map((d) => ({
+          ...d,
+          produk: products.find((p) => p.id === d.produk_id) || {},
+        })),
+      };
     } catch (e) {
       showToast('Gagal simpan PO: ' + e.message, 'error', 'Gagal Simpan PO');
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureSavedSO = async () => {
+    if (soForm.editingId) {
+      const existing = salesOrders.find((o) => o.id === soForm.editingId);
+      if (existing) return existing;
+      const { grandTotal } = calculateTotals(soForm.items, soForm.discountAmount, soForm.ppnActive, null, soForm.shippingCost);
+      return {
+        id: soForm.editingId,
+        no_pesanan: soForm.soNo,
+        customer_id: soForm.customerId,
+        termin: soForm.termin,
+        uang_muka: soForm.uangMuka || 0,
+        total: grandTotal,
+        customer: contacts.find((c) => c.id === soForm.customerId) || { nama: 'Pelanggan' },
+        pesanan_penjualan_detail: soForm.items.map((i) => ({
+          produk_id: i.id,
+          qty: i.qty,
+          harga_jual: i.harga_jual,
+          produk: i,
+        })),
+      };
+    }
+    return await handleSaveSO();
   };
 
   // 2. SIMPAN ATAU PERBARUI PENAWARAN PENJUALAN (SQ)
@@ -1296,10 +1348,20 @@ export default function EternalPackagingERPWorkspace() {
         await supabase.from('pengiriman_pesanan_detail').insert(details);
 
         showToast(`Surat Jalan ${doForm.doNo} berhasil diperbarui!`, 'success', 'Surat Jalan Diperbarui');
-        await handleResetToNewDO();
         await loadData();
-        setViewModes((prev) => ({ ...prev, do: 'list' }));
-        return;
+        return {
+          id: doForm.editingId,
+          no_surat_jalan: doForm.doNo,
+          customer_id: doForm.customerId,
+          ekspedisi: doForm.ekspedisi,
+          no_resi: doForm.noResi,
+          catatan: doForm.catatan,
+          customer: contacts.find((c) => c.id === doForm.customerId) || { nama: 'Pelanggan' },
+          pengiriman_pesanan_detail: details.map((d) => ({
+            ...d,
+            produk: products.find((p) => p.id === d.produk_id) || {},
+          })),
+        };
       }
 
       const docNo = await getNextDocNumber('DO', doForm.date);
@@ -1351,15 +1413,49 @@ export default function EternalPackagingERPWorkspace() {
         await supabase.from('pesanan_penjualan').update({ status: 'SELESAI' }).eq('id', doForm.soId);
       }
 
-      showToast(`Surat Jalan ${docNo} berhasil diterbitkan!`, 'success', 'Surat Jalan Terbit');
-      await handleResetToNewDO();
+      setDoForm((prev) => ({
+        ...prev,
+        editingId: doH.id,
+        doNo: docNo,
+      }));
+      showToast(`Surat Jalan ${docNo} berhasil diterbitkan! Anda dapat langsung memproses alur ke Faktur Penjualan (SI).`, 'success', 'Surat Jalan Terbit');
       await loadData();
-      setViewModes((prev) => ({ ...prev, do: 'list' }));
+      return {
+        ...doH,
+        id: doH.id,
+        no_surat_jalan: docNo,
+        customer_id: doForm.customerId,
+        customer: contacts.find((c) => c.id === doForm.customerId) || { nama: 'Pelanggan' },
+        pengiriman_pesanan_detail: details.map((d) => ({
+          ...d,
+          produk: products.find((p) => p.id === d.produk_id) || {},
+        })),
+      };
     } catch (e) {
       showToast('Gagal simpan DO: ' + e.message, 'error', 'Gagal Simpan DO');
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureSavedDO = async () => {
+    if (doForm.editingId) {
+      const existing = deliveryOrders.find((d) => d.id === doForm.editingId);
+      if (existing) return existing;
+      return {
+        id: doForm.editingId,
+        no_surat_jalan: doForm.doNo,
+        customer_id: doForm.customerId,
+        customer: contacts.find((c) => c.id === doForm.customerId) || { nama: 'Pelanggan' },
+        pengiriman_pesanan_detail: doForm.items.map((i) => ({
+          produk_id: i.id,
+          qty: i.qty,
+          produk: i,
+        })),
+      };
+    }
+    return await handleSaveDO();
   };
 
   // 4. SIMPAN ATAU PERBARUI FAKTUR PENJUALAN (SI)
@@ -1493,10 +1589,18 @@ export default function EternalPackagingERPWorkspace() {
         });
 
         showToast(`Invoice ${siForm.invoiceNo} berhasil diperbarui!`, 'success', 'Invoice Diperbarui');
-        await handleResetToNewSI();
         await loadData();
-        setViewModes((prev) => ({ ...prev, si: 'list' }));
-        return;
+        return {
+          id: siForm.editingId,
+          no_invoice: siForm.invoiceNo,
+          customer_id: siForm.customerId,
+          total_akhir: grandTotal,
+          customer: contacts.find((c) => c.id === siForm.customerId) || { nama: 'Pelanggan' },
+          penjualan_detail: details.map((d) => ({
+            ...d,
+            produk: products.find((p) => p.id === d.produk_id) || {},
+          })),
+        };
       }
 
       const dpAmount = Number(siForm.uangMuka || 0);
@@ -1654,15 +1758,59 @@ export default function EternalPackagingERPWorkspace() {
         details: lines,
       });
 
-      showToast(`Invoice ${docNo} berhasil diterbitkan!`, 'success', 'Invoice Terbit');
-      await handleResetToNewSI();
+      setSiForm((prev) => ({
+        ...prev,
+        editingId: siH.id,
+        invoiceNo: docNo,
+      }));
+      showToast(`Invoice ${docNo} berhasil diterbitkan! Anda dapat langsung memproses alur ke Pelunasan (CR).`, 'success', 'Invoice Terbit');
       await loadData();
-      setViewModes((prev) => ({ ...prev, si: 'list' }));
+      return {
+        ...siH,
+        id: siH.id,
+        no_invoice: docNo,
+        customer_id: siForm.customerId,
+        total_akhir: grandTotal,
+        customer: contacts.find((c) => c.id === siForm.customerId) || { nama: 'Pelanggan' },
+        penjualan_detail: details.map((d) => ({
+          ...d,
+          produk: products.find((p) => p.id === d.produk_id) || {},
+        })),
+      };
     } catch (e) {
       showToast('Gagal simpan Invoice: ' + e.message, 'error', 'Gagal Simpan Invoice');
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureSavedSI = async () => {
+    if (siForm.editingId) {
+      const existing = salesInvoices.find((inv) => inv.id === siForm.editingId);
+      if (existing) return existing;
+      const { grandTotal } = calculateTotals(
+        siForm.items,
+        siForm.discountAmount,
+        siForm.ppnActive,
+        null,
+        siForm.shippingCost
+      );
+      return {
+        id: siForm.editingId,
+        no_invoice: siForm.invoiceNo,
+        customer_id: siForm.customerId,
+        total_akhir: grandTotal,
+        customer: contacts.find((c) => c.id === siForm.customerId) || { nama: 'Pelanggan' },
+        penjualan_detail: siForm.items.map((i) => ({
+          produk_id: i.id,
+          qty: i.qty,
+          harga_jual: i.harga_jual,
+          produk: i,
+        })),
+      };
+    }
+    return await handleSaveSalesInvoice();
   };
 
   // 5. SIMPAN PELUNASAN PIUTANG (CR)
@@ -3485,156 +3633,141 @@ export default function EternalPackagingERPWorkspace() {
                         <span>Ambil (PI) ▾</span>
                       </button>
 
-                      {/* ACCURATE ONLINE: PROSES ALUR TRANSAKSI DROPDOWN (ELEGANT & COMPACT) */}
-                      {soForm.editingId && (
-                        <>
-                          {/* ACCURATE ONLINE: PROSES ALUR TRANSAKSI DROPDOWN */}
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => setSoFlowDropdownOpen(!soFlowDropdownOpen)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
-                            >
-                              <Workflow className="w-3.5 h-3.5 text-emerald-300" />
-                              <span>Proses Alur ▾</span>
-                            </button>
-                            {soFlowDropdownOpen && (
-                              <>
-                                {/* Transparent Backdrop to safely close on outside click */}
-                                <div
-                                  className="fixed inset-0 z-20 cursor-default"
-                                  onClick={() => setSoFlowDropdownOpen(false)}
-                                />
-                                <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSoFlowDropdownOpen(false);
-                                      const po = salesOrders.find((o) => o.id === soForm.editingId) || {
-                                        id: soForm.editingId,
-                                        no_pesanan: soForm.soNo,
-                                        total: calculateTotals(soForm.items, soForm.discountAmount, soForm.ppnActive).grandTotal,
-                                        uang_muka: soForm.uangMuka || 0,
-                                        customer: contacts.find((c) => c.id === soForm.customerId) || { nama: 'Pelanggan' },
-                                        customer_id: soForm.customerId,
-                                      };
-                                      handleOpenDPModal(po);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold"
-                                  >
-                                    <Coins className="w-4 h-4 text-amber-600" />
-                                    <div>
-                                      <div className="font-bold text-amber-950">+ Terima Uang Muka (DP)</div>
-                                      <div className="text-[10px] text-slate-500">Bayar DP sebelum kirim</div>
-                                    </div>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSoFlowDropdownOpen(false);
-                                      const po = salesOrders.find((o) => o.id === soForm.editingId) || {
-                                        id: soForm.editingId,
-                                        no_pesanan: soForm.soNo,
-                                        customer_id: soForm.customerId,
-                                        termin: soForm.termin,
-                                        pesanan_penjualan_detail: soForm.items.map((i) => ({
-                                          produk_id: i.id,
-                                          qty: i.qty,
-                                          harga_jual: i.harga_jual,
-                                          produk: i,
-                                        })),
-                                      };
-                                      flowPOtoDO(po);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                                  >
-                                    <Truck className="w-4 h-4 text-emerald-600" />
-                                    <div>
-                                      <div className="font-bold text-emerald-950">+ Kirim Pesanan (DO)</div>
-                                      <div className="text-[10px] text-slate-500">Terbitkan surat jalan</div>
-                                    </div>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSoFlowDropdownOpen(false);
-                                      const po = salesOrders.find((o) => o.id === soForm.editingId) || {
-                                        id: soForm.editingId,
-                                        no_pesanan: soForm.soNo,
-                                        customer_id: soForm.customerId,
-                                        uang_muka: soForm.uangMuka,
-                                        termin: soForm.termin,
-                                        pesanan_penjualan_detail: soForm.items.map((i) => ({
-                                          produk_id: i.id,
-                                          qty: i.qty,
-                                          harga_jual: i.harga_jual,
-                                          produk: i,
-                                        })),
-                                      };
-                                      flowPOtoSI(po);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                                  >
-                                    <FileText className="w-4 h-4 text-blue-600" />
-                                    <div>
-                                      <div className="font-bold text-blue-950">+ Terbitkan Invoice</div>
-                                      <div className="text-[10px] text-slate-500">Fakturkan & potong DP</div>
-                                    </div>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSoFlowDropdownOpen(false);
-                                      const s = salesOrders.find((o) => o.id === soForm.editingId);
-                                      if (s) {
-                                        setPrintDoc({
-                                          type: 'PO',
-                                          title: 'SURAT PESANAN PENJUALAN',
-                                          noDoc: s.no_pesanan,
-                                          date: s.tanggal,
-                                          customer: s.customer,
-                                          items: s.pesanan_penjualan_detail || [],
-                                          total: s.total,
-                                          uangMuka: s.uang_muka || 0,
-                                          statusBayar: s.status_bayar || 'BELUM_BAYAR',
-                                          catatan: s.catatan,
-                                          companySettings,
-                                        });
-                                      }
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                                  >
-                                    <Printer className="w-4 h-4 text-slate-600" />
-                                    <span>Cetak Dokumen PDF</span>
-                                  </button>
+                      {/* ACCURATE ONLINE: PROSES ALUR TRANSAKSI DROPDOWN (SELALU AKTIF) */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setSoFlowDropdownOpen(!soFlowDropdownOpen)}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition cursor-pointer"
+                          title="Lanjutkan ke alur bisnis berikutnya (DO / DP / Invoice)"
+                        >
+                          <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Proses Alur ▾</span>
+                        </button>
+                        {soFlowDropdownOpen && (
+                          <>
+                            {/* Transparent Backdrop to safely close on outside click */}
+                            <div
+                              className="fixed inset-0 z-20 cursor-default"
+                              onClick={() => setSoFlowDropdownOpen(false)}
+                            />
+                            <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setSoFlowDropdownOpen(false);
+                                  const po = await ensureSavedSO();
+                                  if (po) handleOpenDPModal(po);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold cursor-pointer"
+                              >
+                                <Coins className="w-4 h-4 text-amber-600" />
+                                <div>
+                                  <div className="font-bold text-amber-950">+ Terima Uang Muka (DP)</div>
+                                  <div className="text-[10px] text-slate-500">Bayar DP sebelum kirim</div>
                                 </div>
-                              </>
-                            )}
-                          </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setSoFlowDropdownOpen(false);
+                                  const po = await ensureSavedSO();
+                                  if (po) flowPOtoDO(po);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                              >
+                                <Truck className="w-4 h-4 text-emerald-600" />
+                                <div>
+                                  <div className="font-bold text-emerald-950">+ Kirim Pesanan (DO)</div>
+                                  <div className="text-[10px] text-slate-500">Terbitkan surat jalan</div>
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setSoFlowDropdownOpen(false);
+                                  const po = await ensureSavedSO();
+                                  if (po) flowPOtoSI(po);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                              >
+                                <FileText className="w-4 h-4 text-blue-600" />
+                                <div>
+                                  <div className="font-bold text-blue-950">+ Terbitkan Invoice</div>
+                                  <div className="text-[10px] text-slate-500">Fakturkan & potong DP</div>
+                                </div>
+                              </button>
+                              {soForm.editingId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSoFlowDropdownOpen(false);
+                                    const s = salesOrders.find((o) => o.id === soForm.editingId);
+                                    if (s) {
+                                      setPrintDoc({
+                                        type: 'PO',
+                                        title: 'SURAT PESANAN PENJUALAN',
+                                        noDoc: s.no_pesanan,
+                                        date: s.tanggal,
+                                        customer: s.customer,
+                                        items: s.pesanan_penjualan_detail || [],
+                                        total: s.total,
+                                        uangMuka: s.uang_muka || 0,
+                                        statusBayar: s.status_bayar || 'BELUM_BAYAR',
+                                        catatan: s.catatan,
+                                        companySettings,
+                                      });
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                                >
+                                  <Printer className="w-4 h-4 text-slate-600" />
+                                  <span>Cetak Dokumen PDF</span>
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
 
-                          {/* Tombol Hapus Dokumen PO Permanen dari Supabase */}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDeleteConfirmDoc({
-                                type: 'PO',
-                                id: soForm.editingId,
-                                noDoc: soForm.soNo,
-                              })
-                            }
-                            className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1"
-                            title="Hapus pesanan ini secara permanen dari Supabase"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Hapus PO</span>
-                          </button>
-                        </>
+                      {/* Tombol Hapus Dokumen PO Permanen dari Supabase (Jika Editing) */}
+                      {soForm.editingId && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDeleteConfirmDoc({
+                              type: 'PO',
+                              id: soForm.editingId,
+                              noDoc: soForm.soNo,
+                            })
+                          }
+                          className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                          title="Hapus pesanan ini secara permanen dari Supabase"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Hapus PO</span>
+                        </button>
                       )}
+
+                      {/* Tombol Lanjut Kirim (DO) Langsung Satu Klik */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const po = await ensureSavedSO();
+                          if (po) flowPOtoDO(po);
+                        }}
+                        disabled={loading}
+                        className="px-3.5 py-1.5 bg-[#07291D] hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                        title="Simpan pesanan dan langsung buat Surat Jalan (DO)"
+                      >
+                        <Truck className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Lanjut Kirim (DO) →</span>
+                      </button>
 
                       <button
                         onClick={handleSaveSO}
                         disabled={loading}
-                        className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
+                        className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition cursor-pointer disabled:opacity-50"
                       >
                         <Save className="w-3.5 h-3.5" />
                         <span>{soForm.editingId ? 'SIMPAN PERUBAHAN (PO)' : 'SIMPAN PESANAN (PO)'}</span>
@@ -3939,15 +4072,29 @@ export default function EternalPackagingERPWorkspace() {
                                   })()}
                                   {cols.statusKirim !== false && (
                                     <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                      <span
-                                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                                          s.status === 'SELESAI'
-                                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                                        }`}
-                                      >
-                                        {s.status}
-                                      </span>
+                                      <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                        <span
+                                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            s.status === 'SELESAI'
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                                          }`}
+                                        >
+                                          {s.status}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            flowPOtoDO(s);
+                                          }}
+                                          className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                          title="Langsung terbitkan Surat Jalan (DO) untuk pesanan ini"
+                                        >
+                                          <Truck className="w-3 h-3 text-emerald-300" />
+                                          <span>Kirim DO →</span>
+                                        </button>
+                                      </div>
                                     </td>
                                   )}
                                   {cols.aksiLanjutan === true && (
@@ -5130,103 +5277,110 @@ export default function EternalPackagingERPWorkspace() {
                       <Printer className="w-3.5 h-3.5 text-slate-600" />
                       <span>Cetak Surat Jalan</span>
                     </button>
-                    {doForm.editingId && (
-                      <>
-                        {/* PROSES ALUR DROPDOWN */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setDoFlowDropdownOpen(!doFlowDropdownOpen)}
-                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
-                          >
-                            <Workflow className="w-3.5 h-3.5 text-emerald-300" />
-                            <span>Proses Alur ▾</span>
-                          </button>
-                          {doFlowDropdownOpen && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-20 cursor-default"
-                                onClick={() => setDoFlowDropdownOpen(false)}
-                              />
-                              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDoFlowDropdownOpen(false);
-                                    const currentDO = deliveryOrders.find((d) => d.id === doForm.editingId) || {
-                                      id: doForm.editingId,
-                                      no_surat_jalan: doForm.doNo,
-                                      customer_id: doForm.customerId,
-                                      pengiriman_pesanan_detail: doForm.items.map((i) => ({
-                                        produk_id: i.id,
-                                        qty: i.qty,
-                                        produk: i,
-                                      })),
-                                    };
-                                    flowDOtoSI(currentDO);
-                                  }}
-                                  className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold"
-                                >
-                                  <FileText className="w-4 h-4 text-blue-600" />
-                                  <div>
-                                    <div className="font-bold text-blue-950">+ Terbitkan Invoice (SI)</div>
-                                    <div className="text-[10px] text-slate-500">Alirkan ke Faktur Penjualan</div>
-                                  </div>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDoFlowDropdownOpen(false);
-                                    const d = deliveryOrders.find((x) => x.id === doForm.editingId);
-                                    if (d) {
-                                      setPrintDoc({
-                                        type: 'DO',
-                                        title: 'SURAT JALAN PENGIRIMAN',
-                                        noDoc: d.no_surat_jalan,
-                                        date: d.tanggal,
-                                        customer: d.customer,
-                                        items: d.pengiriman_pesanan_detail || [],
-                                        ekspedisi: d.ekspedisi,
-                                        catatan: d.catatan,
-                                        companySettings,
-                                      });
-                                    }
-                                  }}
-                                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                                >
-                                  <Printer className="w-4 h-4 text-slate-600" />
-                                  <span>Cetak Surat Jalan PDF</span>
-                                </button>
+                    {/* ACCURATE ONLINE: PROSES ALUR PENGIRIMAN DROPDOWN */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setDoFlowDropdownOpen(!doFlowDropdownOpen)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition cursor-pointer"
+                      >
+                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Proses Alur ▾</span>
+                      </button>
+                      {doFlowDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-20 cursor-default"
+                            onClick={() => setDoFlowDropdownOpen(false)}
+                          />
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setDoFlowDropdownOpen(false);
+                                const currentDO = await ensureSavedDO();
+                                if (currentDO) flowDOtoSI(currentDO);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold cursor-pointer"
+                            >
+                              <FileText className="w-4 h-4 text-blue-600" />
+                              <div>
+                                <div className="font-bold text-blue-950">+ Terbitkan Invoice (SI)</div>
+                                <div className="text-[10px] text-slate-500">Alirkan ke Faktur Penjualan</div>
                               </div>
-                            </>
-                          )}
-                        </div>
+                            </button>
+                            {doForm.editingId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDoFlowDropdownOpen(false);
+                                  const d = deliveryOrders.find((x) => x.id === doForm.editingId);
+                                  if (d) {
+                                    setPrintDoc({
+                                      type: 'DO',
+                                      title: 'SURAT JALAN PENGIRIMAN',
+                                      noDoc: d.no_surat_jalan,
+                                      date: d.tanggal,
+                                      customer: d.customer,
+                                      items: d.pengiriman_pesanan_detail || [],
+                                      ekspedisi: d.ekspedisi,
+                                      catatan: d.catatan,
+                                      companySettings,
+                                    });
+                                  }
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                              >
+                                <Printer className="w-4 h-4 text-slate-600" />
+                                <span>Cetak Surat Jalan PDF</span>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
 
-                        {/* TOMBOL HAPUS DO */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDeleteConfirmDoc({
-                              type: 'DO',
-                              id: doForm.editingId,
-                              noDoc: doForm.doNo,
-                            })
-                          }
-                          className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1"
-                          title="Hapus surat jalan ini dari Supabase"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                          <span>Hapus DO</span>
-                        </button>
-                      </>
+                    {/* TOMBOL HAPUS DO (JIKA EDITING) */}
+                    {doForm.editingId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteConfirmDoc({
+                            type: 'DO',
+                            id: doForm.editingId,
+                            noDoc: doForm.doNo,
+                          })
+                        }
+                        className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                        title="Hapus surat jalan ini dari Supabase"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Hapus DO</span>
+                      </button>
                     )}
+
+                    {/* Tombol Lanjut Tagih (SI) Langsung Satu Klik */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const doDoc = await ensureSavedDO();
+                        if (doDoc) flowDOtoSI(doDoc);
+                      }}
+                      disabled={loading}
+                      className="px-3.5 py-1.5 bg-[#07291D] hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                      title="Simpan surat jalan dan langsung buat Faktur Penjualan (SI)"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Lanjut Tagih (SI) →</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
                         setDoSearchQuery('');
                         setDoGetFromModalOpen(true);
                       }}
-                      className="px-3 py-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-2xs"
+                      className="px-3 py-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-2xs cursor-pointer"
                       title="Ambil data dari Pesanan Penjualan (PO) yang belum dikirim"
                     >
                       <Download className="w-3.5 h-3.5 text-emerald-700" />
@@ -5235,7 +5389,7 @@ export default function EternalPackagingERPWorkspace() {
                     <button
                       type="button"
                       onClick={handleResetToNewDO}
-                      className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 flex items-center space-x-1"
+                      className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 flex items-center space-x-1 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Form Baru</span>
@@ -5243,7 +5397,7 @@ export default function EternalPackagingERPWorkspace() {
                     <button
                       onClick={handleSaveDO}
                       disabled={loading}
-                      className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5"
+                      className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                     >
                       <Save className="w-3.5 h-3.5" />
                       <span>{doForm.editingId ? 'SIMPAN PERUBAHAN (DO)' : 'TERBITKAN SURAT JALAN (DO)'}</span>
@@ -5475,15 +5629,29 @@ export default function EternalPackagingERPWorkspace() {
                                   )}
                                   {cols.status !== false && (
                                     <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                      <span
-                                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                          d.status === 'TERKIRIM'
-                                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                            : 'bg-amber-50 text-amber-800 border-amber-300'
-                                        }`}
-                                      >
-                                        {d.status === 'TERKIRIM' ? 'Terkirim Selesai' : 'Dalam Perjalanan'}
-                                      </span>
+                                      <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                        <span
+                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            d.status === 'TERKIRIM'
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                              : 'bg-amber-50 text-amber-800 border-amber-300'
+                                          }`}
+                                        >
+                                          {d.status === 'TERKIRIM' ? 'Terkirim Selesai' : 'Dalam Perjalanan'}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            flowDOtoSI(d);
+                                          }}
+                                          className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                          title="Langsung buat Faktur Penjualan (SI) untuk surat jalan ini"
+                                        >
+                                          <FileText className="w-3 h-3 text-emerald-300" />
+                                          <span>Tagih SI →</span>
+                                        </button>
+                                      </div>
                                     </td>
                                   )}
                                   {cols.aksiLanjutan === true && (
@@ -5696,97 +5864,107 @@ export default function EternalPackagingERPWorkspace() {
                       <Printer className="w-3.5 h-3.5 text-slate-600" />
                       <span>Cetak Invoice</span>
                     </button>
-                    {siForm.editingId && (
-                      <>
-                        {/* PROSES ALUR DROPDOWN */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setSiFlowDropdownOpen(!siFlowDropdownOpen)}
-                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition"
-                          >
-                            <Workflow className="w-3.5 h-3.5 text-emerald-300" />
-                            <span>Proses Alur ▾</span>
-                          </button>
-                          {siFlowDropdownOpen && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-20 cursor-default"
-                                onClick={() => setSiFlowDropdownOpen(false)}
-                              />
-                              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSiFlowDropdownOpen(false);
-                                    const currentSI = salesInvoices.find((i) => i.id === siForm.editingId) || {
-                                      id: siForm.editingId,
-                                      no_faktur: siForm.invoiceNo,
-                                      customer_id: siForm.customerId,
-                                      total_akhir: calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive).grandTotal,
-                                      bayar: siForm.uangMuka || 0,
-                                    };
-                                    flowSItoPayment(currentSI);
-                                  }}
-                                  className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold"
-                                >
-                                  <Coins className="w-4 h-4 text-emerald-600" />
-                                  <div>
-                                    <div className="font-bold text-emerald-950">+ Terima Pembayaran (CR)</div>
-                                    <div className="text-[10px] text-slate-500">Catat pelunasan piutang pelanggan</div>
-                                  </div>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSiFlowDropdownOpen(false);
-                                    const inv = salesInvoices.find((x) => x.id === siForm.editingId);
-                                    const cust = contacts.find((c) => c.id === siForm.customerId);
-                                    const totals = calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive);
-                                    setPrintDoc({
-                                      type: 'SI',
-                                      title: 'FAKTUR PENJUALAN',
-                                      noDoc: siForm.invoiceNo,
-                                      date: siForm.date,
-                                      customer: cust,
-                                      items: inv?.penjualan_detail || siForm.items,
-                                      total: totals.grandTotal,
-                                      subtotal: totals.subtotal,
-                                      diskon: totals.diskon,
-                                      ppn: totals.ppn,
-                                      uangMuka: siForm.uangMuka || 0,
-                                      catatan: siForm.catatan,
-                                      companySettings,
-                                    });
-                                  }}
-                                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                                >
-                                  <Printer className="w-4 h-4 text-slate-600" />
-                                  <span>Cetak Invoice PDF</span>
-                                </button>
+                    {/* ACCURATE ONLINE: PROSES ALUR FAKTUR DROPDOWN */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setSiFlowDropdownOpen(!siFlowDropdownOpen)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition cursor-pointer"
+                      >
+                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Proses Alur ▾</span>
+                      </button>
+                      {siFlowDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-20 cursor-default"
+                            onClick={() => setSiFlowDropdownOpen(false)}
+                          />
+                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-left animate-in fade-in duration-100">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setSiFlowDropdownOpen(false);
+                                const currentSI = await ensureSavedSI();
+                                if (currentSI) flowSItoPayment(currentSI);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold cursor-pointer"
+                            >
+                              <Coins className="w-4 h-4 text-emerald-600" />
+                              <div>
+                                <div className="font-bold text-emerald-950">+ Terima Pembayaran (CR)</div>
+                                <div className="text-[10px] text-slate-500">Catat pelunasan piutang pelanggan</div>
                               </div>
-                            </>
-                          )}
-                        </div>
+                            </button>
+                            {siForm.editingId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSiFlowDropdownOpen(false);
+                                  const inv = salesInvoices.find((x) => x.id === siForm.editingId);
+                                  const cust = contacts.find((c) => c.id === siForm.customerId);
+                                  const totals = calculateTotals(siForm.items, siForm.discountAmount, siForm.ppnActive);
+                                  setPrintDoc({
+                                    type: 'SI',
+                                    title: 'FAKTUR PENJUALAN',
+                                    noDoc: siForm.invoiceNo,
+                                    date: siForm.date,
+                                    customer: cust,
+                                    items: inv?.penjualan_detail || siForm.items,
+                                    total: totals.grandTotal,
+                                    subtotal: totals.subtotal,
+                                    diskon: totals.diskon,
+                                    ppn: totals.ppn,
+                                    uangMuka: siForm.uangMuka || 0,
+                                    catatan: siForm.catatan,
+                                    companySettings,
+                                  });
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                              >
+                                <Printer className="w-4 h-4 text-slate-600" />
+                                <span>Cetak Invoice PDF</span>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
 
-                        {/* TOMBOL HAPUS INVOICE */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDeleteConfirmDoc({
-                              type: 'SI',
-                              id: siForm.editingId,
-                              noDoc: siForm.invoiceNo,
-                            })
-                          }
-                          className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1"
-                          title="Hapus Faktur Penjualan ini dari Supabase"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                          <span>Hapus Invoice</span>
-                        </button>
-                      </>
+                    {/* TOMBOL HAPUS INVOICE (JIKA EDITING) */}
+                    {siForm.editingId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteConfirmDoc({
+                            type: 'SI',
+                            id: siForm.editingId,
+                            noDoc: siForm.invoiceNo,
+                          })
+                        }
+                        className="px-3 py-1.5 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                        title="Hapus Faktur Penjualan ini dari Supabase"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Hapus Invoice</span>
+                      </button>
                     )}
+
+                    {/* Tombol Lanjut Bayar (CR) Langsung Satu Klik */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const siDoc = await ensureSavedSI();
+                        if (siDoc) flowSItoPayment(siDoc);
+                      }}
+                      disabled={loading}
+                      className="px-3.5 py-1.5 bg-[#07291D] hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                      title="Simpan invoice dan langsung proses Penerimaan Kas / Pembayaran (CR)"
+                    >
+                      <Coins className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Lanjut Bayar (CR) →</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -5794,7 +5972,7 @@ export default function EternalPackagingERPWorkspace() {
                         setSiTakeTab('DO');
                         setSiGetFromModalOpen(true);
                       }}
-                      className="px-3 py-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-2xs"
+                      className="px-3 py-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-2xs cursor-pointer"
                       title="Ambil data dari Surat Jalan (DO) atau Pesanan Penjualan (PO)"
                     >
                       <Download className="w-3.5 h-3.5 text-emerald-700" />
@@ -5803,7 +5981,7 @@ export default function EternalPackagingERPWorkspace() {
                     <button
                       type="button"
                       onClick={handleResetToNewSI}
-                      className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 flex items-center space-x-1"
+                      className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 flex items-center space-x-1 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Form Baru</span>
@@ -5811,10 +5989,10 @@ export default function EternalPackagingERPWorkspace() {
                     <button
                       onClick={handleSaveSalesInvoice}
                       disabled={loading}
-                      className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5"
+                      className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      <span>{siForm.editingId ? 'SIMPAN PERUBAHAN INVOICE' : 'TERBITKAN INVOICE'}</span>
+                      <span>{siForm.editingId ? 'SIMPAN PERUBAHAN (SI)' : 'TERBITKAN INVOICE (SI)'}</span>
                     </button>
                   </div>
                 ) : (
@@ -6055,15 +6233,31 @@ export default function EternalPackagingERPWorkspace() {
                                   )}
                                   {cols.statusBayar !== false && (
                                     <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                      <span
-                                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                          i.status === 'LUNAS'
-                                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                            : 'bg-rose-50 text-rose-800 border-rose-300'
-                                        }`}
-                                      >
-                                        {i.status === 'LUNAS' ? 'Lunas Penuh' : 'Belum Lunas (Piutang)'}
-                                      </span>
+                                      <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                        <span
+                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            i.status === 'LUNAS'
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                              : 'bg-rose-50 text-rose-800 border-rose-300'
+                                          }`}
+                                        >
+                                          {i.status === 'LUNAS' ? 'Lunas Penuh' : 'Belum Lunas (Piutang)'}
+                                        </span>
+                                        {i.status === 'PIUTANG' && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              flowSItoPayment(i);
+                                            }}
+                                            className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                            title="Langsung catat penerimaan kas / pelunasan piutang (CR)"
+                                          >
+                                            <Coins className="w-3 h-3 text-emerald-300" />
+                                            <span>Bayar CR →</span>
+                                          </button>
+                                        )}
+                                      </div>
                                     </td>
                                   )}
                                   {cols.aksiLanjutan === true && (

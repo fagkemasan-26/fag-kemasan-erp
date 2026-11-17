@@ -1014,6 +1014,14 @@ export default function PurchaseModule({
         }));
         await supabase.from('pesanan_pembelian_detail').insert(details);
         onToast?.(`Pesanan Pembelian ${docNo} berhasil diperbarui!`, 'success');
+        await loadAllPurchaseData();
+        onRefresh?.();
+        return {
+          id: poForm.editingId,
+          no_pesanan: docNo,
+          supplier_id: poForm.supplierId,
+          items: poForm.items,
+        };
       } else {
         const { data: poHeader, error: hErr } = await supabase
           .from('pesanan_pembelian')
@@ -1038,18 +1046,41 @@ export default function PurchaseModule({
           subtotal: Number(i.qty) * Number(i.harga_beli) - Number(i.diskonRp || 0),
         }));
         await supabase.from('pesanan_pembelian_detail').insert(details);
-        onToast?.(`Pesanan Pembelian ${docNo} berhasil disimpan!`, 'success');
-      }
 
-      switchViewMode('po_beli', 'list');
-      await loadAllPurchaseData();
-      onRefresh?.();
+        setPoForm((prev) => ({
+          ...prev,
+          editingId: poHeader.id,
+          poNo: docNo,
+        }));
+        onToast?.(`Pesanan Pembelian ${docNo} berhasil disimpan! Anda dapat langsung memproses alur Penerimaan Barang (RI).`, 'success');
+        await loadAllPurchaseData();
+        onRefresh?.();
+        return {
+          id: poHeader.id,
+          no_pesanan: docNo,
+          supplier_id: poForm.supplierId,
+          items: poForm.items,
+        };
+      }
     } catch (err) {
       console.error('Error save PO:', err);
       onToast?.('Gagal menyimpan PO: ' + err.message, 'error');
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureSavedPO = async () => {
+    if (poForm.editingId) {
+      return {
+        id: poForm.editingId,
+        no_pesanan: poForm.poNo,
+        supplier_id: poForm.supplierId,
+        items: poForm.items,
+      };
+    }
+    return await handleSavePO();
   };
 
   // 2. SIMPAN PENERIMAAN BARANG (RI)
@@ -1120,6 +1151,16 @@ export default function PurchaseModule({
         await supabase.from('penerimaan_barang_detail').insert(details);
 
         onToast?.(`Penerimaan Barang ${docNo} berhasil diperbarui!`, 'success');
+        await loadAllPurchaseData();
+        onRefresh?.();
+        return {
+          id: riForm.editingId,
+          no_terima: docNo,
+          supplier_id: riForm.supplierId,
+          no_surat_jalan_supplier: riForm.supplierSJNo,
+          pesanan_pembelian_id: riForm.poId,
+          items: riForm.items,
+        };
       } else {
         // Simpan Header RI Baru
         const { data: riHeader, error: rErr } = await supabase
@@ -1179,18 +1220,45 @@ export default function PurchaseModule({
             .eq('id', riForm.poId);
         }
 
-        onToast?.(`Penerimaan Barang ${docNo} berhasil disimpan! Stok bertambah otomatis.`, 'success');
+        setRiForm((prev) => ({
+          ...prev,
+          editingId: riHeader.id,
+          riNo: docNo,
+        }));
+        onToast?.(`Penerimaan Barang ${docNo} berhasil disimpan! Anda dapat langsung memproses alur Faktur (FB).`, 'success');
+        await loadAllPurchaseData();
+        onRefresh?.();
+        return {
+          id: riHeader.id,
+          no_terima: docNo,
+          supplier_id: riForm.supplierId,
+          no_surat_jalan_supplier: riForm.supplierSJNo,
+          pesanan_pembelian_id: riForm.poId,
+          items: riForm.items,
+        };
       }
-
-      switchViewMode('ri_beli', 'list');
-      await loadAllPurchaseData();
-      onRefresh?.();
     } catch (err) {
       console.error('Error save RI:', err);
       onToast?.('Gagal menyimpan Penerimaan Barang: ' + err.message, 'error');
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureSavedRI = async () => {
+    if (riForm.editingId) {
+      return {
+        ...riForm,
+        id: riForm.editingId,
+        no_terima: riForm.riNo,
+        supplier_id: riForm.supplierId,
+        no_surat_jalan_supplier: riForm.supplierSJNo,
+        pesanan_pembelian_id: riForm.poId,
+        items: riForm.items,
+      };
+    }
+    return await handleSaveRI();
   };
 
   // 3. SIMPAN FAKTUR PEMBELIAN (FB)
@@ -1416,16 +1484,44 @@ export default function PurchaseModule({
           .eq('id', piForm.riId);
       }
 
-      onToast?.(`Faktur Pembelian ${docNo} berhasil disimpan & jurnal otomatis terposting!`, 'success');
-      switchViewMode('pi_beli', 'list');
+      setPiForm((prev) => ({
+        ...prev,
+        editingId: piHeader.id,
+        invoiceNo: docNo,
+      }));
+      onToast?.(`Faktur Pembelian ${docNo} berhasil disimpan & jurnal otomatis terposting! Anda dapat langsung memproses alur Pembayaran (PP).`, 'success');
       await loadAllPurchaseData();
       onRefresh?.();
+      return {
+        id: piHeader.id,
+        no_faktur: docNo,
+        supplier_id: piForm.supplierId,
+        total_akhir: calculateFBTotals().grandTotal,
+        bayar: isCOD ? calculateFBTotals().grandTotal : 0,
+        items: piForm.items,
+      };
     } catch (err) {
       console.error('Error save Purchase Invoice:', err);
       onToast?.('Gagal menyimpan Faktur Pembelian: ' + err.message, 'error');
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureSavedPurchaseInvoice = async () => {
+    if (piForm.editingId) {
+      return {
+        ...piForm,
+        id: piForm.editingId,
+        no_faktur: piForm.invoiceNo,
+        supplier_id: piForm.supplierId,
+        total_akhir: calculateFBTotals().grandTotal,
+        bayar: piForm.bayar || 0,
+        items: piForm.items,
+      };
+    }
+    return await handleSavePurchaseInvoice();
   };
 
   // 4. SIMPAN PEMBAYARAN PEMBELIAN (PP - PELUNASAN HUTANG / BAYAR PESANAN)
@@ -2047,94 +2143,78 @@ export default function PurchaseModule({
                     <span>Form Baru</span>
                   </button>
 
-                  {/* PROSES ALUR TRANSAKSI (JIKA EDITING PO) */}
-                  {poForm.editingId && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setPoFlowDropdownOpen(!poFlowDropdownOpen)}
-                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
-                        title="Lanjutkan proses alur transaksi pesanan pembelian"
-                      >
-                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Proses Alur ▾</span>
-                      </button>
+                  {/* ACCURATE ONLINE: PROSES ALUR PO DROPDOWN */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPoFlowDropdownOpen(!poFlowDropdownOpen)}
+                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
+                      title="Lanjutkan proses alur transaksi pesanan pembelian"
+                    >
+                      <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Proses Alur ▾</span>
+                    </button>
 
-                      {poFlowDropdownOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPoFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setPoFlowDropdownOpen(false);
-                                const currentPO = {
-                                  ...poForm,
-                                  id: poForm.editingId,
-                                  no_pesanan: poForm.poNo,
-                                  supplier_id: poForm.supplierId,
-                                  items: poForm.items,
-                                };
+                    {poFlowDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPoFlowDropdownOpen(false)} />
+                        <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setPoFlowDropdownOpen(false);
+                              const currentPO = await ensureSavedPO();
+                              if (currentPO) {
                                 await handleTakePOIntoRI(currentPO);
                                 handleSubTabSwitch('ri_beli');
                                 switchViewMode('ri_beli', 'form');
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold"
-                            >
-                              <Truck className="w-4 h-4 text-emerald-600" />
-                              <div>
-                                <div className="font-bold text-emerald-950">+ Terima Barang (RI)</div>
-                                <div className="text-[10px] text-slate-500">Catat fisik barang masuk gudang</div>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setPoFlowDropdownOpen(false);
-                                const currentPO = {
-                                  ...poForm,
-                                  id: poForm.editingId,
-                                  no_pesanan: poForm.poNo,
-                                  supplier_id: poForm.supplierId,
-                                  items: poForm.items,
-                                  discountAmount: poForm.discountAmount,
-                                  ppnActive: poForm.ppnActive,
-                                };
+                              }
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-800 flex items-center space-x-2 font-semibold cursor-pointer"
+                          >
+                            <Truck className="w-4 h-4 text-emerald-600" />
+                            <div>
+                              <div className="font-bold text-emerald-950">+ Terima Barang (RI)</div>
+                              <div className="text-[10px] text-slate-500">Catat fisik barang masuk gudang</div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setPoFlowDropdownOpen(false);
+                              const currentPO = await ensureSavedPO();
+                              if (currentPO) {
                                 await handleTakePOIntoFB(currentPO);
                                 handleSubTabSwitch('pi_beli');
                                 switchViewMode('pi_beli', 'form');
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                            >
-                              <FileCheck className="w-4 h-4 text-blue-600" />
-                              <div>
-                                <div className="font-bold text-blue-950">+ Terbitkan Faktur (FB)</div>
-                                <div className="text-[10px] text-slate-500">Catat tagihan hutang supplier</div>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setPoFlowDropdownOpen(false);
-                                const poTotals = calculatePOTotals();
-                                const currentPO = {
-                                  ...poForm,
-                                  id: poForm.editingId,
-                                  no_pesanan: poForm.poNo,
-                                  supplier_id: poForm.supplierId,
-                                  items: poForm.items,
-                                  total: poTotals.grandTotal,
-                                };
+                              }
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                          >
+                            <FileCheck className="w-4 h-4 text-blue-600" />
+                            <div>
+                              <div className="font-bold text-blue-950">+ Terbitkan Faktur (FB)</div>
+                              <div className="text-[10px] text-slate-500">Catat tagihan hutang supplier</div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setPoFlowDropdownOpen(false);
+                              const currentPO = await ensureSavedPO();
+                              if (currentPO) {
                                 await handleFlowPOtoPP(currentPO);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
-                            >
-                              <Coins className="w-4 h-4 text-amber-600" />
-                              <div>
-                                <div className="font-bold text-amber-950">+ Bayar Pembelian (PP)</div>
-                                <div className="text-[10px] text-slate-500">Bayar langsung pesanan ini via Kas/Bank</div>
-                              </div>
-                            </button>
+                              }
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
+                          >
+                            <Coins className="w-4 h-4 text-amber-600" />
+                            <div>
+                              <div className="font-bold text-amber-950">+ Bayar Pembelian (PP)</div>
+                              <div className="text-[10px] text-slate-500">Bayar langsung pesanan ini via Kas/Bank</div>
+                            </div>
+                          </button>
+                          {poForm.editingId && (
                             <button
                               type="button"
                               onClick={() => {
@@ -2148,16 +2228,16 @@ export default function PurchaseModule({
                                 };
                                 if (p) setPdfModalDoc({ type: 'PO', data: p });
                               }}
-                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
+                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
                             >
                               <Printer className="w-4 h-4 text-slate-600" />
                               <span>Cetak Dokumen PDF</span>
                             </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* TOMBOL HAPUS PO (JIKA SEDANG EDITING) */}
                   {poForm.editingId && (
@@ -2177,6 +2257,25 @@ export default function PurchaseModule({
                       <span>Hapus PO</span>
                     </button>
                   )}
+
+                  {/* Tombol Lanjut Terima (RI) Langsung Satu Klik */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const poDoc = await ensureSavedPO();
+                      if (poDoc) {
+                        await handleTakePOIntoRI(poDoc);
+                        handleSubTabSwitch('ri_beli');
+                        switchViewMode('ri_beli', 'form');
+                      }
+                    }}
+                    disabled={loading}
+                    className="px-3.5 py-2 bg-[#07291D] hover:bg-black text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                    title="Simpan pesanan dan langsung buat Penerimaan Barang (RI)"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Lanjut Terima (RI) →</span>
+                  </button>
 
                   <button
                     type="button"
@@ -2379,15 +2478,31 @@ export default function PurchaseModule({
                               })()}
                               {(cols.statusTerima !== false || cols.status !== false) && (
                                 <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                      po.status === 'SELESAI'
-                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                        : 'bg-amber-50 text-amber-800 border-amber-300'
-                                    }`}
-                                  >
-                                    {po.status === 'SELESAI' ? 'SELESAI' : 'MENUNGGU PENERIMAAN'}
-                                  </span>
+                                  <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        po.status === 'SELESAI'
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                          : 'bg-amber-50 text-amber-800 border-amber-300'
+                                      }`}
+                                    >
+                                      {po.status === 'SELESAI' ? 'SELESAI' : 'MENUNGGU PENERIMAAN'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleTakePOIntoRI(po);
+                                        handleSubTabSwitch('ri_beli');
+                                        switchViewMode('ri_beli', 'form');
+                                      }}
+                                      className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                      title="Langsung catat Penerimaan Barang (RI) untuk pesanan ini"
+                                    >
+                                      <Truck className="w-3 h-3 text-emerald-300" />
+                                      <span>Terima RI →</span>
+                                    </button>
+                                  </div>
                                 </td>
                               )}
                               {cols.aksiLanjutan === true && (
@@ -2790,48 +2905,42 @@ export default function PurchaseModule({
                     <span>Ambil (PO) ▾</span>
                   </button>
 
-                  {/* PROSES ALUR TRANSAKSI (JIKA EDITING RI) */}
-                  {riForm.editingId && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setRiFlowDropdownOpen(!riFlowDropdownOpen)}
-                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
-                        title="Lanjutkan proses alur transaksi penerimaan barang"
-                      >
-                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Proses Alur ▾</span>
-                      </button>
+                  {/* ACCURATE ONLINE: PROSES ALUR RI DROPDOWN */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setRiFlowDropdownOpen(!riFlowDropdownOpen)}
+                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
+                      title="Lanjutkan proses alur transaksi penerimaan barang"
+                    >
+                      <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Proses Alur ▾</span>
+                    </button>
 
-                      {riFlowDropdownOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setRiFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setRiFlowDropdownOpen(false);
-                                const currentRI = {
-                                  ...riForm,
-                                  id: riForm.editingId,
-                                  no_terima: riForm.riNo,
-                                  supplier_id: riForm.supplierId,
-                                  no_surat_jalan_supplier: riForm.supplierSJNo,
-                                  pesanan_pembelian_id: riForm.poId,
-                                  items: riForm.items,
-                                };
+                    {riFlowDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setRiFlowDropdownOpen(false)} />
+                        <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setRiFlowDropdownOpen(false);
+                              const currentRI = await ensureSavedRI();
+                              if (currentRI) {
                                 await handleTakeRIIntoFB(currentRI);
                                 handleSubTabSwitch('pi_beli');
                                 switchViewMode('pi_beli', 'form');
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold"
-                            >
-                              <FileCheck className="w-4 h-4 text-blue-600" />
-                              <div>
-                                <div className="font-bold text-blue-950">+ Terbitkan Faktur (FB)</div>
-                                <div className="text-[10px] text-slate-500">Tagihkan barang yang sudah diterima</div>
-                              </div>
-                            </button>
+                              }
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-800 flex items-center space-x-2 font-semibold cursor-pointer"
+                          >
+                            <FileCheck className="w-4 h-4 text-blue-600" />
+                            <div>
+                              <div className="font-bold text-blue-950">+ Terbitkan Faktur (FB)</div>
+                              <div className="text-[10px] text-slate-500">Tagihkan barang yang sudah diterima</div>
+                            </div>
+                          </button>
+                          {riForm.editingId && (
                             <button
                               type="button"
                               onClick={() => {
@@ -2845,16 +2954,16 @@ export default function PurchaseModule({
                                 };
                                 if (r) setPdfModalDoc({ type: 'RI', data: r });
                               }}
-                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
+                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
                             >
                               <Printer className="w-4 h-4 text-slate-600" />
                               <span>Cetak Bukti Penerimaan PDF</span>
                             </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* TOMBOL HAPUS RI (JIKA SEDANG EDITING) */}
                   {riForm.editingId && (
@@ -2874,6 +2983,25 @@ export default function PurchaseModule({
                       <span>Hapus RI</span>
                     </button>
                   )}
+
+                  {/* Tombol Lanjut Faktur (FB) Langsung Satu Klik */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const riDoc = await ensureSavedRI();
+                      if (riDoc) {
+                        await handleTakeRIIntoFB(riDoc);
+                        handleSubTabSwitch('pi_beli');
+                        switchViewMode('pi_beli', 'form');
+                      }
+                    }}
+                    disabled={loading}
+                    className="px-3.5 py-2 bg-[#07291D] hover:bg-black text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                    title="Simpan penerimaan dan langsung buat Faktur Pembelian (FB)"
+                  >
+                    <FileCheck className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Lanjut Faktur (FB) →</span>
+                  </button>
 
                   <button
                     type="button"
@@ -3052,7 +3180,23 @@ export default function PurchaseModule({
                               )}
                               {cols.refPO !== false && (
                                 <td className={`${densityClass} font-mono text-emerald-800 border-r border-slate-100/80`}>
-                                  {ri.pesanan_pembelian?.no_pesanan || '-'}
+                                  <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                                    <span>{ri.pesanan_pembelian?.no_pesanan || '-'}</span>
+                                    <button
+                                      type="button"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleTakeRIIntoFB(ri);
+                                        handleSubTabSwitch('pi_beli');
+                                        switchViewMode('pi_beli', 'form');
+                                      }}
+                                      className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                      title="Langsung terbitkan Faktur Pembelian (FB) untuk barang ini"
+                                    >
+                                      <FileCheck className="w-3 h-3 text-emerald-300" />
+                                      <span>Faktur FB →</span>
+                                    </button>
+                                  </div>
                                 </td>
                               )}
                               {cols.catatan !== false && (
@@ -3355,46 +3499,40 @@ export default function PurchaseModule({
                     <span>Ambil (RI / PO) ▾</span>
                   </button>
 
-                  {/* PROSES ALUR TRANSAKSI (JIKA EDITING FB) */}
-                  {piForm.editingId && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setFbFlowDropdownOpen(!fbFlowDropdownOpen)}
-                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
-                        title="Lanjutkan proses alur transaksi faktur pembelian"
-                      >
-                        <Workflow className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Proses Alur ▾</span>
-                      </button>
+                  {/* ACCURATE ONLINE: PROSES ALUR FAKTUR BELI DROPDOWN */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setFbFlowDropdownOpen(!fbFlowDropdownOpen)}
+                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.97] cursor-pointer"
+                      title="Lanjutkan proses alur transaksi faktur pembelian"
+                    >
+                      <Workflow className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Proses Alur ▾</span>
+                    </button>
 
-                      {fbFlowDropdownOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setFbFlowDropdownOpen(false)} />
-                          <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setFbFlowDropdownOpen(false);
-                                const currentFB = {
-                                  ...piForm,
-                                  id: piForm.editingId,
-                                  no_faktur: piForm.invoiceNo,
-                                  supplier_id: piForm.supplierId,
-                                  total_akhir: calculateFBTotals().grandTotal,
-                                  bayar: piForm.bayar || 0,
-                                  items: piForm.items,
-                                };
+                    {fbFlowDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setFbFlowDropdownOpen(false)} />
+                        <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs text-left animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setFbFlowDropdownOpen(false);
+                              const currentFB = await ensureSavedPurchaseInvoice();
+                              if (currentFB) {
                                 await handleFlowFBtoPP(currentFB);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold"
-                            >
-                              <Coins className="w-4 h-4 text-amber-600" />
-                              <div>
-                                <div className="font-bold text-amber-950">+ Bayar / Lunasi Hutang (PP)</div>
-                                <div className="text-[10px] text-slate-500">Keluarkan kas/bank untuk bayar</div>
-                              </div>
-                            </button>
+                              }
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-800 flex items-center space-x-2 font-semibold cursor-pointer"
+                          >
+                            <Coins className="w-4 h-4 text-amber-600" />
+                            <div>
+                              <div className="font-bold text-amber-950">+ Bayar / Lunasi Hutang (PP)</div>
+                              <div className="text-[10px] text-slate-500">Keluarkan kas/bank untuk bayar</div>
+                            </div>
+                          </button>
+                          {piForm.editingId && (
                             <button
                               type="button"
                               onClick={() => {
@@ -3408,16 +3546,16 @@ export default function PurchaseModule({
                                 };
                                 if (inv) setPdfModalDoc({ type: 'FB', data: inv });
                               }}
-                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100"
+                              className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center space-x-2 font-semibold border-t border-slate-100 cursor-pointer"
                             >
                               <Printer className="w-4 h-4 text-slate-600" />
                               <span>Cetak Faktur Pembelian PDF</span>
                             </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* TOMBOL HAPUS FAKTUR (JIKA SEDANG EDITING) */}
                   {piForm.editingId && (
@@ -3437,6 +3575,23 @@ export default function PurchaseModule({
                       <span>Hapus Faktur</span>
                     </button>
                   )}
+
+                  {/* Tombol Lanjut Bayar (PP) Langsung Satu Klik */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const fbDoc = await ensureSavedPurchaseInvoice();
+                      if (fbDoc) {
+                        await handleFlowFBtoPP(fbDoc);
+                      }
+                    }}
+                    disabled={loading}
+                    className="px-3.5 py-2 bg-[#07291D] hover:bg-black text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                    title="Simpan faktur dan langsung bayar hutang / kas keluar (PP)"
+                  >
+                    <Coins className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Lanjut Bayar (PP) →</span>
+                  </button>
 
                   <button
                     type="button"
@@ -3621,15 +3776,31 @@ export default function PurchaseModule({
                               )}
                               {cols.statusBayar !== false && (
                                 <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                      p.status_bayar === 'LUNAS'
-                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                        : 'bg-rose-50 text-rose-800 border-rose-300'
-                                    }`}
-                                  >
-                                    {p.status_bayar === 'LUNAS' ? 'Lunas Penuh' : 'Hutang'}
-                                  </span>
+                                  <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        p.status_bayar === 'LUNAS'
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                          : 'bg-rose-50 text-rose-800 border-rose-300'
+                                      }`}
+                                    >
+                                      {p.status_bayar === 'LUNAS' ? 'Lunas Penuh' : 'Hutang'}
+                                    </span>
+                                    {p.status_bayar !== 'LUNAS' && (
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          await handleFlowFBtoPP(p);
+                                        }}
+                                        className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                        title="Langsung bayar hutang pembelian ini (PP)"
+                                      >
+                                        <Coins className="w-3 h-3 text-emerald-300" />
+                                        <span>Bayar PP →</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               )}
                               {cols.aksiLanjutan === true && (
