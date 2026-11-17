@@ -33,7 +33,8 @@ import {
   Workflow,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getNextDocNumber, peekNextDocNumber, createJournalEntry } from '../lib/accounting';
+import { getNextDocNumber, peekNextDocNumber, createJournalEntry, syncJournalEntryByReference } from '../lib/accounting';
+import { parseLampiranUrls } from '../lib/lampiranHelper';
 import QuickAddSupplierModal from './QuickAddSupplierModal';
 import { TableSkeleton, MetricCardsSkeleton, FormSkeleton } from './SkeletonShimmer';
 import TableFilterToolbar from './TableFilterToolbar';
@@ -1232,6 +1233,51 @@ export default function PurchaseModule({
         }));
         await supabase.from('pembelian_detail').insert(details);
 
+        // Sinkronkan Jurnal Pembelian agar saldo Hutang Usaha & Persediaan selalu akurat
+        const creditAccount = isCOD ? '1102-01' : '2101-01';
+        const netBarang = Math.max(0, subtotal - diskonFaktur);
+        const journalLines = [
+          {
+            kodeAkun: '1104-01',
+            debit: netBarang,
+            kredit: 0,
+            catatan: `Persediaan Kemasan Masuk (${docNo})`,
+          },
+        ];
+
+        if (shipping > 0) {
+          journalLines.push({
+            kodeAkun: '5102-01',
+            debit: shipping,
+            kredit: 0,
+            catatan: `Ongkos Angkut Pembelian Bahan (${docNo})`,
+          });
+        }
+
+        if (ppn > 0) {
+          journalLines.push({
+            kodeAkun: '1105-03',
+            debit: ppn,
+            kredit: 0,
+            catatan: 'PPN Masukan Pembelian (11%)',
+          });
+        }
+
+        journalLines.push({
+          kodeAkun: creditAccount,
+          debit: 0,
+          kredit: grandTotal,
+          catatan: isCOD ? `Pelunasan Langsung (COD) via Kas/Bank (${docNo})` : `Hutang Usaha Supplier (${docNo})`,
+        });
+
+        await syncJournalEntryByReference({
+          tipeTransaksi: 'PEMBELIAN',
+          noReferensi: docNo,
+          tanggal: piForm.date,
+          keterangan: `Faktur Pembelian ${docNo} (${piForm.supplierNo ? 'Ref: ' + piForm.supplierNo : 'Tempo'})`,
+          details: journalLines,
+        });
+
         onToast?.(`Faktur Pembelian ${docNo} berhasil diperbarui!`, 'success');
         switchViewMode('pi_beli', 'list');
         await loadAllPurchaseData();
@@ -2273,7 +2319,7 @@ export default function PurchaseModule({
                                           title="Lihat Bukti Foto / Dokumen"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Foto</span>
+                                          <span>{parseLampiranUrls(po.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(po.lampiran_url).length})` : 'Foto'}</span>
                                         </button>
                                       )}
                                     </div>
@@ -2968,7 +3014,7 @@ export default function PurchaseModule({
                                           title="Lihat Foto Fisik Barang / Surat Jalan Supplier"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Foto</span>
+                                          <span>{parseLampiranUrls(ri.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(ri.lampiran_url).length})` : 'Foto'}</span>
                                         </button>
                                       )}
                                     </div>
@@ -3532,7 +3578,7 @@ export default function PurchaseModule({
                                           title="Lihat Bukti Foto Nota/Faktur Supplier"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Foto</span>
+                                          <span>{parseLampiranUrls(p.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(p.lampiran_url).length})` : 'Foto'}</span>
                                         </button>
                                       )}
                                     </div>
@@ -4163,7 +4209,7 @@ export default function PurchaseModule({
                                           title="Lihat Bukti Struk / Slip Transfer Bank"
                                         >
                                           <Camera className="w-3 h-3 text-emerald-700" />
-                                          <span>Foto</span>
+                                          <span>{parseLampiranUrls(pp.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(pp.lampiran_url).length})` : 'Foto'}</span>
                                         </button>
                                       )}
                                     </div>

@@ -104,6 +104,86 @@ export async function createJournalEntry({
 }
 
 /**
+ * Sinkronisasi/Update Jurnal Otomatis berdasarkan nomor referensi dokumen (misal Faktur Pembelian / Invoice Penjualan).
+ * Jika jurnal sudah ada, baris detailnya disinkronkan ulang dengan nominal terbaru.
+ * Jika belum ada, dibuatkan jurnal baru secara otomatis.
+ */
+export async function syncJournalEntryByReference({
+  tipeTransaksi,
+  noReferensi,
+  tanggal = new Date().toISOString().split('T')[0],
+  keterangan,
+  details, // Array of { kodeAkun, debit, kredit, catatan }
+}) {
+  try {
+    if (!noReferensi) return null;
+
+    const { data: accounts } = await supabase.from('akun').select('id, kode_akun, nama_akun');
+    const accountMap = {};
+    accounts?.forEach((a) => {
+      accountMap[a.kode_akun] = a.id;
+    });
+
+    // Cari apakah jurnal untuk dokumen referensi ini sudah pernah dibuat
+    const { data: existingJournals } = await supabase
+      .from('jurnal')
+      .select('id, no_jurnal')
+      .eq('no_referensi', noReferensi)
+      .limit(1);
+
+    let journalHeader = existingJournals?.[0];
+
+    if (journalHeader) {
+      // Update header jika ada perubahan tanggal atau keterangan
+      await supabase
+        .from('jurnal')
+        .update({
+          tanggal,
+          tipe_transaksi: tipeTransaksi,
+          keterangan,
+        })
+        .eq('id', journalHeader.id);
+
+      // Hapus detail jurnal lama
+      await supabase.from('jurnal_detail').delete().eq('jurnal_id', journalHeader.id);
+    } else {
+      // Buat header jurnal baru
+      const jNo = `JU.${new Date().getFullYear()}.${(new Date().getMonth() + 1).toString().padStart(2, '0')}.${Date.now().toString().slice(-4)}`;
+      const { data: newJ, error: jError } = await supabase
+        .from('jurnal')
+        .insert({
+          no_jurnal: jNo,
+          tanggal,
+          tipe_transaksi: tipeTransaksi,
+          no_referensi: noReferensi,
+          keterangan,
+        })
+        .select()
+        .single();
+      if (jError) throw jError;
+      journalHeader = newJ;
+    }
+
+    // Insert detail jurnal baru
+    const journalDetails = details.map((d) => ({
+      jurnal_id: journalHeader.id,
+      akun_id: d.akun_id || d.akunId || accountMap[d.kodeAkun],
+      debit: Number(d.debit || 0),
+      kredit: Number(d.kredit || 0),
+      catatan: d.catatan || keterangan,
+    }));
+
+    const { error: dError } = await supabase.from('jurnal_detail').insert(journalDetails);
+    if (dError) throw dError;
+
+    return journalHeader;
+  } catch (error) {
+    console.error('Error saat sinkronisasi jurnal referensi:', error);
+    throw error;
+  }
+}
+
+/**
  * Hapus Jurnal Manual beserta seluruh rincian debit/kreditnya
  */
 export async function deleteJournalEntry(journalId) {

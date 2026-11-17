@@ -5,10 +5,12 @@ import { supabase } from '../lib/supabase';
 import {
   createJournalEntry,
   deleteJournalEntry,
+  syncJournalEntryByReference,
   resetAllTransactions,
   peekNextDocNumber,
   getNextDocNumber,
 } from '../lib/accounting';
+import { parseLampiranUrls } from '../lib/lampiranHelper';
 import ManualTransactionModal from '../components/ManualTransactionModal';
 import GoogleLiveProductSearch from '../components/GoogleLiveProductSearch';
 import GoogleLiveCustomerSearch from '../components/GoogleLiveCustomerSearch';
@@ -406,7 +408,10 @@ export default function EternalPackagingERPWorkspace() {
     accounts.forEach((a) => {
       const b = balances[a.id];
       if (b) {
-        if (a.saldo_normal === 'DEBIT') {
+        const isDebit =
+          a.saldo_normal === 'DEBIT' ||
+          ['Aktiva', 'Kas & Bank', 'Piutang', 'Persediaan', 'Aktiva Lancar Lainnya', 'Aktiva Tetap', 'Beban', 'HPP', 'Beban Pokok Penjualan', 'Beban Lainnya'].includes(a.tipe_akun);
+        if (isDebit) {
           b.saldoAkhir = b.saldoAwal + b.totalDebit - b.totalKredit;
         } else {
           b.saldoAkhir = b.saldoAwal + b.totalKredit - b.totalDebit;
@@ -430,19 +435,17 @@ export default function EternalPackagingERPWorkspace() {
       .reduce((sum, a) => sum + (accountBalances[a.id]?.saldoAkhir || 0), 0);
   }, [accounts, accountBalances]);
 
+  // Valuasi Persediaan Fisik Gudang (Sinkron 100% dengan Master Kemasan)
   const totalAsetPersediaan = useMemo(() => {
-    const fromProducts = products.reduce((sum, p) => sum + (Number(p.stok || 0) * Number(p.harga_beli || 0)), 0);
-    const fromAccount = accounts.find((a) => a.kode_akun === '1104-01');
-    const accBal = fromAccount ? (accountBalances[fromAccount.id]?.saldoAkhir || 0) : 0;
-    return accBal > 0 ? accBal : fromProducts;
-  }, [products, accounts, accountBalances]);
+    return products.reduce((sum, p) => sum + (Math.max(0, Number(p.stok || 0)) * Number(p.harga_beli || 0)), 0);
+  }, [products]);
 
+  // HPP Realtime dari Akun HPP (Kode 51 / Tipe HPP)
   const totalHPP = useMemo(() => {
-    const hppAccount = accounts.find((a) => a.kode_akun === '5101-01');
-    const accHpp = hppAccount ? (accountBalances[hppAccount.id]?.saldoAkhir || 0) : 0;
-    if (accHpp > 0) return accHpp;
-    return Math.round(totalOmzetPenjualan * 0.6);
-  }, [accounts, accountBalances, totalOmzetPenjualan]);
+    const hppAccounts = accounts.filter((a) => a.tipe_akun === 'HPP' || a.kode_akun?.startsWith('51'));
+    const accHpp = hppAccounts.reduce((sum, a) => sum + (accountBalances[a.id]?.saldoAkhir || 0), 0);
+    return Math.max(0, accHpp);
+  }, [accounts, accountBalances]);
 
   const totalLabaKotor = useMemo(() => {
     return Math.max(0, totalOmzetPenjualan - totalHPP);
@@ -1403,6 +1406,91 @@ export default function EternalPackagingERPWorkspace() {
           subtotal: i.total || i.qty * i.harga_jual,
         }));
         await supabase.from('penjualan_detail').insert(details);
+
+        // Sinkronkan Jurnal Penjualan agar saldo Piutang & Pendapatan selalu akurat
+        const editLines = [];
+        const editGrandTotal = grandTotal;
+        const editDpAmount = Number(siForm.uangMuka || 0);
+        const editSisaPiutang = isCOD ? 0 : Math.max(0, editGrandTotal - editDpAmount);
+
+        if (isCOD) {
+          editLines.push({
+            kodeAkun: '1102-01',
+            debit: editGrandTotal,
+            kredit: 0,
+            catatan: 'Kas/Bank Diterima (Penjualan Tunai / COD)',
+          });
+        } else {
+          if (editSisaPiutang > 0) {
+            editLines.push({
+              kodeAkun: '1103-01',
+              debit: editSisaPiutang,
+              kredit: 0,
+              catatan: 'Piutang Usaha (Sisa Tagihan Invoice)',
+            });
+          }
+          if (editDpAmount > 0) {
+            editLines.push({
+              kodeAkun: '2103-01',
+              debit: editDpAmount,
+              kredit: 0,
+              catatan: 'Alokasi / Pemotongan Uang Muka Penjualan (DP)',
+            });
+          }
+        }
+
+        if (Number(siForm.discountAmount) > 0) {
+          editLines.push({
+            kodeAkun: '4102-01',
+            debit: Number(siForm.discountAmount),
+            kredit: 0,
+            catatan: 'Potongan Penjualan',
+          });
+        }
+        editLines.push({
+          kodeAkun: '4101-01',
+          debit: 0,
+          kredit: subtotal,
+          catatan: 'Pendapatan Penjualan Kemasan',
+        });
+        if (shipping > 0) {
+          editLines.push({
+            kodeAkun: '4104-01',
+            debit: 0,
+            kredit: shipping,
+            catatan: 'Pendapatan Ongkos Kirim / Ekspedisi',
+          });
+        }
+        if (ppn > 0) {
+          editLines.push({
+            kodeAkun: '2102-01',
+            debit: 0,
+            kredit: ppn,
+            catatan: 'Hutang PPN Keluaran',
+          });
+        }
+        if (totalHPP > 0) {
+          editLines.push({
+            kodeAkun: '5101-01',
+            debit: totalHPP,
+            kredit: 0,
+            catatan: 'Beban Pokok Penjualan (HPP)',
+          });
+          editLines.push({
+            kodeAkun: '1104-01',
+            debit: 0,
+            kredit: totalHPP,
+            catatan: 'Persediaan Barang Dagang (Kemasan)',
+          });
+        }
+
+        await syncJournalEntryByReference({
+          tipeTransaksi: 'PENJUALAN',
+          noReferensi: siForm.invoiceNo,
+          tanggal: siForm.date,
+          keterangan: `Invoice No. ${siForm.invoiceNo}`,
+          details: editLines,
+        });
 
         showToast(`Invoice ${siForm.invoiceNo} berhasil diperbarui!`, 'success', 'Invoice Diperbarui');
         await handleResetToNewSI();
@@ -3751,7 +3839,7 @@ export default function EternalPackagingERPWorkspace() {
                                               title="Lihat Bukti Foto / Dokumen"
                                             >
                                               <Camera className="w-3 h-3 text-emerald-700" />
-                                              <span>Foto</span>
+                                              <span>{parseLampiranUrls(s.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(s.lampiran_url).length})` : 'Foto'}</span>
                                             </button>
                                           )}
                                         </div>
@@ -4451,7 +4539,7 @@ export default function EternalPackagingERPWorkspace() {
                                               title="Lihat Bukti Foto / Dokumen"
                                             >
                                               <Camera className="w-3 h-3 text-emerald-700" />
-                                              <span>Foto</span>
+                                              <span>{parseLampiranUrls(q.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(q.lampiran_url).length})` : 'Foto'}</span>
                                             </button>
                                           )}
                                         </div>
@@ -4846,7 +4934,7 @@ export default function EternalPackagingERPWorkspace() {
                                       title="Lihat Bukti Foto / Transfer"
                                     >
                                       <Camera className="w-3 h-3 text-emerald-700" />
-                                      <span>Foto</span>
+                                      <span>{parseLampiranUrls(dp.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(dp.lampiran_url).length})` : 'Foto'}</span>
                                     </button>
                                   )}
                                 </div>
@@ -5349,7 +5437,7 @@ export default function EternalPackagingERPWorkspace() {
                                               title="Lihat Bukti Foto Surat Jalan / Terima Barang"
                                             >
                                               <Camera className="w-3 h-3 text-emerald-700" />
-                                              <span>Foto</span>
+                                              <span>{parseLampiranUrls(d.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(d.lampiran_url).length})` : 'Foto'}</span>
                                             </button>
                                           )}
                                         </div>
@@ -5924,7 +6012,7 @@ export default function EternalPackagingERPWorkspace() {
                                               title="Lihat Bukti Foto / Dokumen"
                                             >
                                               <Camera className="w-3 h-3 text-emerald-700" />
-                                              <span>Foto</span>
+                                              <span>{parseLampiranUrls(i.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(i.lampiran_url).length})` : 'Foto'}</span>
                                             </button>
                                           )}
                                         </div>
@@ -6549,7 +6637,7 @@ export default function EternalPackagingERPWorkspace() {
                                               title="Lihat Bukti Foto Bukti Bayar / Slip Transfer"
                                             >
                                               <Camera className="w-3 h-3 text-emerald-700" />
-                                              <span>Foto</span>
+                                              <span>{parseLampiranUrls(p.lampiran_url).length > 1 ? `Foto (${parseLampiranUrls(p.lampiran_url).length})` : 'Foto'}</span>
                                             </button>
                                           )}
                                         </div>
