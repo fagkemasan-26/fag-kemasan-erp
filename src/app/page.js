@@ -3830,8 +3830,12 @@ export default function EternalPackagingERPWorkspace() {
                   // 3. Status Kirim
                   .filter((s) => {
                     if (soFilter.statusKirim === 'ALL') return true;
-                    if (soFilter.statusKirim === 'MENUNGGU_KIRIM') return s.status !== 'SELESAI';
-                    if (soFilter.statusKirim === 'SELESAI') return s.status === 'SELESAI';
+                    const linkedDO = deliveryOrders.find(
+                      (d) => d.pesanan_id === s.id || (d.catatan && s.no_pesanan && d.catatan.includes(s.no_pesanan))
+                    );
+                    const isShipped = Boolean(linkedDO);
+                    if (soFilter.statusKirim === 'MENUNGGU_KIRIM') return !isShipped;
+                    if (soFilter.statusKirim === 'SELESAI') return isShipped;
                     return true;
                   })
                   // 4. Customer
@@ -4120,7 +4124,7 @@ export default function EternalPackagingERPWorkspace() {
                                     const linkedDO = deliveryOrders.find(
                                       (d) => d.pesanan_id === s.id || (d.catatan && s.no_pesanan && d.catatan.includes(s.no_pesanan))
                                     );
-                                    const isShipped = s.status === 'SELESAI' || Boolean(linkedDO);
+                                    const isShipped = Boolean(linkedDO);
 
                                     return (
                                       <td className={`${densityClass} text-center border-r border-slate-100/80`}>
@@ -9984,11 +9988,9 @@ export default function EternalPackagingERPWorkspace() {
 
         const filteredPOs = salesOrders.filter((po) => {
           if (activeCustId && po.customer_id !== activeCustId) return false;
-          const isShipped =
-            po.status === 'SELESAI' ||
-            deliveryOrders.some(
-              (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
-            );
+          const isShipped = deliveryOrders.some(
+            (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
+          );
           if (doOnlyUnfinished && isShipped) return false;
 
           if (!qLower) return true;
@@ -10159,11 +10161,9 @@ export default function EternalPackagingERPWorkspace() {
                     const itemsSummary = detailList
                       .map((d) => `${d.produk?.nama || 'Barang'} (${d.qty || 1} ${d.satuan || d.produk?.satuan || 'Pcs'})`)
                       .join(', ');
-                    const isShipped =
-                      po.status === 'SELESAI' ||
-                      deliveryOrders.some(
-                        (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
-                      );
+                    const isShipped = deliveryOrders.some(
+                      (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
+                    );
                     const linkedInv = salesInvoices.find(
                       (i) => i.pesanan_id === po.id || (i.catatan && po.no_pesanan && i.catatan.includes(po.no_pesanan))
                     );
@@ -10621,7 +10621,7 @@ export default function EternalPackagingERPWorkspace() {
                       const linkedDO = deliveryOrders.find(
                         (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
                       );
-                      const isShipped = po.status === 'SELESAI' || Boolean(linkedDO);
+                      const isShipped = Boolean(linkedDO);
 
                       return (
                         <div
