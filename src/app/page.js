@@ -791,6 +791,7 @@ export default function EternalPackagingERPWorkspace() {
     catatan: '',
     lampiran_url: '',
     status: 'PIUTANG',
+    mendahuluiPengiriman: false,
   });
 
   // 5. Penerimaan Penjualan (CR)
@@ -1654,10 +1655,13 @@ export default function EternalPackagingERPWorkspace() {
 
       // ACCURATE ONLINE / GAAP PARITY UNTUK STOK PENJUALAN:
       // Catatan: Trigger PostgreSQL `trg_penjualan_kurang_stok` otomatis memotong stok saat penjualan_detail di-insert.
-      // - Kasus A: Jika Faktur Penjualan (SI) dibuat DARI Surat Jalan (DO), stok fisik SUDAH keluar dari gudang saat DO terbit!
-      //   Maka potongan otomatis dari trigger harus kita kembalikan (revert) agar tidak dobel potong!
-      // - Kasus B: Jika Faktur Penjualan (SI) dibuat LANGSUNG (tanpa DO / kasir langsung), trigger database sudah otomatis memotong stok dan mencatat riwayat_stok.
-      if (siForm.doId) {
+      // - Kasus A: Jika Faktur Penjualan (SI) dibuat DARI Surat Jalan (DO), stok fisik SUDAH keluar saat DO terbit!
+      // - Kasus B: Jika Faktur Penjualan (SI) dicentang "Mendahului Pengiriman Barang" (Tagih di Awal), barang BELUM keluar dari gudang!
+      //   Maka pada Kasus A & B, potongan otomatis dari trigger harus kita kembalikan (revert) agar stok fisik tidak dipotong oleh Faktur!
+      // - Kasus C: Hanya Faktur Penjualan langsung / kasir di toko (tanpa DO & tanpa centang mendahului) yang memotong stok seketika.
+      const shouldSkipStockDeduction = Boolean(siForm.doId || siForm.mendahuluiPengiriman);
+
+      if (shouldSkipStockDeduction) {
         for (const item of siForm.items) {
           const { data: curProd } = await supabase.from('produk').select('stok').eq('id', item.id).single();
           const restoredStok = Number(curProd?.stok || 0) + Number(item.qty || 0);
@@ -1672,7 +1676,8 @@ export default function EternalPackagingERPWorkspace() {
       }
 
       // 2. Update status referensi pesanan / pengiriman (Accurate Parity)
-      if (siForm.soId) {
+      // Jika Faktur Mendahului Pengiriman, pesanan TETAP menunggu pengiriman hingga DO resmi diterbitkan!
+      if (siForm.soId && !siForm.mendahuluiPengiriman) {
         await supabase
           .from('pesanan_penjualan')
           .update({ status: 'SELESAI' })
@@ -2533,6 +2538,7 @@ export default function EternalPackagingERPWorkspace() {
       catatan: invoice.catatan || '',
       lampiran_url: invoice.lampiran_url || '',
       status: invoice.status,
+      mendahuluiPengiriman: Boolean(invoice.catatan && invoice.catatan.includes('Mendahului Pengiriman')),
     });
     setViewModes((p) => ({ ...p, si: 'form' }));
   };
@@ -2557,6 +2563,7 @@ export default function EternalPackagingERPWorkspace() {
       catatan: '',
       lampiran_url: '',
       status: 'PIUTANG',
+      mendahuluiPengiriman: false,
     });
     setViewModes((p) => ({ ...p, si: 'form' }));
   };
@@ -2694,6 +2701,9 @@ export default function EternalPackagingERPWorkspace() {
     const nextNo = await peekNextDocNumber('SI', today);
     const defaultTerm = (companySettings.syaratBayarList || DEFAULT_PAYMENT_TERMS).find((t) => t.isDefault)?.nama || 'Net 30';
     const dueDate = calculateDueDate(today, defaultTerm, companySettings.syaratBayarList);
+    const linkedDO = deliveryOrders.find(
+      (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
+    );
 
     setSiForm((prev) => ({
       ...prev,
@@ -2702,11 +2712,12 @@ export default function EternalPackagingERPWorkspace() {
       date: today,
       customerId: po.customer_id,
       soId: po.id,
-      doId: null,
+      doId: linkedDO ? linkedDO.id : null,
       termin: defaultTerm,
       dueDate: dueDate,
+      mendahuluiPengiriman: !linkedDO,
       uangMuka: Number(po.uang_muka || 0),
-      catatan: `Penagihan atas Pesanan: ${po.no_pesanan}${po.uang_muka > 0 ? ` (Sudah DP: Rp ${Number(po.uang_muka).toLocaleString('id-ID')})` : ''}`,
+      catatan: `Penagihan atas Pesanan: ${po.no_pesanan}${!linkedDO ? ' (Faktur Mendahului Pengiriman Barang)' : ''}${po.uang_muka > 0 ? ` (Sudah DP: Rp ${Number(po.uang_muka).toLocaleString('id-ID')})` : ''}`,
       items:
         po.pesanan_penjualan_detail?.map((d) => {
           const prod = products.find((p) => p.id === d.produk_id);
@@ -6426,6 +6437,40 @@ export default function EternalPackagingERPWorkspace() {
                         value={siForm.dueDate}
                         onChange={(val) => setSiForm({ ...siForm, dueDate: val })}
                       />
+                    </div>
+
+                    <div className="sm:col-span-2 md:col-span-4 mt-0.5">
+                      <label
+                        className={`flex items-start space-x-2.5 p-3 rounded-xl border cursor-pointer transition select-none ${
+                          siForm.mendahuluiPengiriman
+                            ? 'bg-amber-50/90 border-amber-300 shadow-2xs'
+                            : 'bg-white border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(siForm.mendahuluiPengiriman)}
+                          onChange={(e) =>
+                            setSiForm((prev) => ({
+                              ...prev,
+                              mendahuluiPengiriman: e.target.checked,
+                            }))
+                          }
+                          className="w-4 h-4 mt-0.5 text-emerald-700 rounded focus:ring-emerald-600 cursor-pointer"
+                        />
+                        <div className="flex-1 text-xs">
+                          <span
+                            className={`font-bold block ${
+                              siForm.mendahuluiPengiriman ? 'text-amber-950 font-black' : 'text-slate-800'
+                            }`}
+                          >
+                            Ya, Faktur Mendahului Pengiriman Barang (Tagih di Awal, Barang Dikirim Nanti via DO)
+                          </span>
+                          <span className="text-[11px] text-slate-500 leading-relaxed block mt-0.5">
+                            Jika dicentang, Faktur ini <strong>TIDAK AKAN MEMOTONG STOK GUDANG</strong>. Stok gudang baru benar-benar dipotong saat Surat Jalan (DO) diterbitkan oleh bagian pengiriman.
+                          </span>
+                        </div>
+                      </label>
                     </div>
                   </div>
 

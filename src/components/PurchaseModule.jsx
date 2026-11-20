@@ -263,6 +263,7 @@ export default function PurchaseModule({
     riId: null,
     statusBayar: 'HUTANG',
     bayar: 0,
+    mendahuluiPenerimaan: false,
   });
 
   // 4. Pembayaran Pembelian (PP) Form
@@ -728,6 +729,7 @@ export default function PurchaseModule({
       riId: p.penerimaan_barang_id || null,
       statusBayar: p.status_bayar,
       bayar: Number(p.bayar || 0),
+      mendahuluiPenerimaan: Boolean(p.catatan && p.catatan.includes('Mendahului Penerimaan')),
     });
     switchViewMode('pi_beli', 'form');
   };
@@ -753,6 +755,7 @@ export default function PurchaseModule({
       riId: null,
       statusBayar: 'HUTANG',
       bayar: 0,
+      mendahuluiPenerimaan: false,
     });
     switchViewMode('pi_beli', 'form');
   };
@@ -1394,9 +1397,12 @@ export default function PurchaseModule({
       // 3. Penyesuaian Stok (Accurate Online / ERP Parity):
       // Catatan: Supabase memiliki database trigger `trg_pembelian_tambah_stok` yang otomatis menambah stok saat pembelian_detail di-insert.
       // - Kasus A: Jika Faktur Pembelian (FB) dibuat DARI Penerimaan Barang (RI), stok SUDAH masuk ke gudang saat RI diterbitkan!
-      //   Maka trigger database yang terlanjur menambah stok harus kita batalkan (revert) agar tidak dobel hitung!
-      // - Kasus B: Jika Faktur Pembelian (FB) dibuat LANGSUNG (tanpa RI), trigger database sudah otomatis menambah stok dan mencatat riwayat_stok.
-      if (piForm.riId) {
+      // - Kasus B: Jika Faktur Pembelian (FB) dicentang "Mendahului Penerimaan Barang" (Bayar di Awal), barang BELUM tiba di gudang!
+      // Pada Kasus A & B, trigger penambahan otomatis harus kita kembalikan (revert) agar stok fisik tidak ditambah oleh Faktur!
+      // - Kasus C: Hanya Faktur Pembelian langsung (tanpa RI & tanpa centang mendahului) yang menambah stok seketika.
+      const shouldSkipStockAddition = Boolean(piForm.riId || piForm.mendahuluiPenerimaan);
+
+      if (shouldSkipStockAddition) {
         for (const item of piForm.items) {
           const { data: curProd } = await supabase.from('produk').select('stok').eq('id', item.id).single();
           const revertedStok = Math.max(0, Number(curProd?.stok || 0) - Number(item.qty || 0));
@@ -1474,7 +1480,8 @@ export default function PurchaseModule({
       });
 
       // Update status referensi (Accurate Parity)
-      if (piForm.poId) {
+      // Jika Faktur Mendahului Penerimaan, PO tetap menunggu penerimaan sampai fisik barang tiba & RI terbit!
+      if (piForm.poId && !piForm.mendahuluiPenerimaan) {
         await supabase
           .from('pesanan_pembelian')
           .update({ status: 'SELESAI' })
@@ -1834,16 +1841,21 @@ export default function PurchaseModule({
           };
         });
 
+    const linkedRI = goodsReceipts.find(
+      (ri) => ri.pesanan_id === poId || (ri.keterangan && poNo && ri.keterangan.includes(poNo))
+    );
+
     setPiForm({
       editingId: null,
       invoiceNo: nextNo || `FB.${today.replace(/-/g, '.')}.0001`,
       date: today,
       supplierId: supplierId,
       poId: poId,
-      riId: null,
+      riId: linkedRI ? linkedRI.id : null,
       supplierNo: '',
       termin: poTerm,
       dueDate: dueDate,
+      mendahuluiPenerimaan: !linkedRI,
       discountAmount: Number(po.discountAmount || 0),
       shippingCost: Number(po.shippingCost || 0),
       ppnActive: po.ppnActive !== undefined ? po.ppnActive : false,
@@ -1859,7 +1871,7 @@ export default function PurchaseModule({
         total: i.total !== undefined ? i.total : Math.round(Number(i.qty || 1) * Number(i.harga_beli || 0) - Number(i.diskonRp || 0)),
         catatan: i.catatan || '',
       })),
-      catatan: `Faktur Pembelian berdasarkan Pesanan ${poNo}`,
+      catatan: `Faktur Pembelian berdasarkan Pesanan ${poNo}${!linkedRI ? ' (Faktur Mendahului Penerimaan Barang)' : ''}`,
       lampiran_url: '',
     });
     setTakeModalType(null);
@@ -3962,6 +3974,40 @@ export default function PurchaseModule({
                     onChange={(e) => setPiForm((p) => ({ ...p, supplierNo: e.target.value }))}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono"
                   />
+                </div>
+
+                <div className="sm:col-span-6 mt-1">
+                  <label
+                    className={`flex items-start space-x-2.5 p-3 rounded-xl border cursor-pointer transition select-none ${
+                      piForm.mendahuluiPenerimaan
+                        ? 'bg-amber-50/90 border-amber-300 shadow-2xs'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(piForm.mendahuluiPenerimaan)}
+                      onChange={(e) =>
+                        setPiForm((prev) => ({
+                          ...prev,
+                          mendahuluiPenerimaan: e.target.checked,
+                        }))
+                      }
+                      className="w-4 h-4 mt-0.5 text-emerald-700 rounded focus:ring-emerald-600 cursor-pointer"
+                    />
+                    <div className="flex-1 text-xs">
+                      <span
+                        className={`font-bold block ${
+                          piForm.mendahuluiPenerimaan ? 'text-amber-950 font-black' : 'text-slate-800'
+                        }`}
+                      >
+                        Ya, Faktur Mendahului Penerimaan Barang (Tagih / Bayar di Awal, Barang Belum Tiba di Gudang)
+                      </span>
+                      <span className="text-[11px] text-slate-500 leading-relaxed block mt-0.5">
+                        Jika dicentang, Faktur ini <strong>TIDAK AKAN MENAMBAH STOK FISIK</strong> di gudang. Stok fisik baru benar-benar bertambah saat Penerimaan Barang (RI) diinput oleh bagian gudang saat armada pabrik tiba.
+                      </span>
+                    </div>
+                  </label>
                 </div>
               </div>
 
