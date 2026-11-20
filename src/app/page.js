@@ -261,6 +261,7 @@ export default function EternalPackagingERPWorkspace() {
   const [advancedFilters, setAdvancedFilters] = useState({
     so: {
       statusBayar: 'ALL',
+      statusFaktur: 'ALL',
       statusKirim: 'ALL',
       dateRange: 'ALL',
       customStartDate: '',
@@ -3816,6 +3817,16 @@ export default function EternalPackagingERPWorkspace() {
                     if (soFilter.statusBayar === 'LUNAS') return isLunas;
                     return true;
                   })
+                  // 2b. Status Faktur
+                  .filter((s) => {
+                    if (!soFilter.statusFaktur || soFilter.statusFaktur === 'ALL') return true;
+                    const linkedInv = salesInvoices.find(
+                      (i) => i.pesanan_id === s.id || (i.catatan && s.no_pesanan && i.catatan.includes(s.no_pesanan))
+                    );
+                    if (soFilter.statusFaktur === 'BELUM_DITAGIH') return !linkedInv;
+                    if (soFilter.statusFaktur === 'SUDAH_DITAGIH') return Boolean(linkedInv);
+                    return true;
+                  })
                   // 3. Status Kirim
                   .filter((s) => {
                     if (soFilter.statusKirim === 'ALL') return true;
@@ -3896,6 +3907,7 @@ export default function EternalPackagingERPWorkspace() {
                               {cols.catatan !== false && <th className="py-3 px-3.5 border-r border-slate-200/60">Keterangan / Catatan</th>}
                               {cols.total !== false && <th className="py-3 px-3.5 text-right border-r border-slate-200/60">Total Nilai (Rp)</th>}
                               {cols.statusBayar !== false && <th className="py-3 px-3.5 text-center border-r border-slate-200/60">Status Pembayaran / DP</th>}
+                              {cols.statusFaktur !== false && <th className="py-3 px-3.5 text-center border-r border-slate-200/60">Status Faktur</th>}
                               {cols.statusKirim !== false && <th className="py-3 px-3.5 text-center border-r border-slate-200/60">Status Kirim</th>}
                               {cols.aksiLanjutan === true && <th className="py-3 px-3.5 text-center">Aksi Cepat</th>}
                             </tr>
@@ -4078,33 +4090,75 @@ export default function EternalPackagingERPWorkspace() {
                                       </td>
                                     );
                                   })()}
-                                  {cols.statusKirim !== false && (
-                                    <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                      <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
-                                        <span
-                                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                                            s.status === 'SELESAI'
-                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                              : 'bg-amber-50 text-amber-800 border-amber-200'
-                                          }`}
-                                        >
-                                          {s.status}
+                                  {cols.statusFaktur !== false && (() => {
+                                    const linkedInv = salesInvoices.find(
+                                      (i) => i.pesanan_id === s.id || (i.catatan && s.no_pesanan && i.catatan.includes(s.no_pesanan))
+                                    );
+                                    if (linkedInv) {
+                                      return (
+                                        <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                          <div className="flex flex-col items-center">
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-teal-50 text-teal-800 border-teal-300">
+                                              SUDAH DIFAKTURKAN
+                                            </span>
+                                            <span className="text-[9px] font-mono font-bold text-slate-500 mt-0.5">
+                                              {linkedInv.no_invoice}
+                                            </span>
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+                                    return (
+                                      <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-900 border-amber-300">
+                                          BELUM DITAGIH
                                         </span>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            flowPOtoDO(s);
-                                          }}
-                                          className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
-                                          title="Langsung terbitkan Surat Jalan (DO) untuk pesanan ini"
-                                        >
-                                          <Truck className="w-3 h-3 text-emerald-300" />
-                                          <span>Kirim DO →</span>
-                                        </button>
-                                      </div>
-                                    </td>
-                                  )}
+                                      </td>
+                                    );
+                                  })()}
+                                  {cols.statusKirim !== false && (() => {
+                                    const linkedDO = deliveryOrders.find(
+                                      (d) => d.pesanan_id === s.id || (d.catatan && s.no_pesanan && d.catatan.includes(s.no_pesanan))
+                                    );
+                                    const isShipped = s.status === 'SELESAI' || Boolean(linkedDO);
+
+                                    return (
+                                      <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                        <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                          <div className="flex flex-col items-center">
+                                            <span
+                                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                                isShipped
+                                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                                              }`}
+                                            >
+                                              {isShipped ? 'TERKIRIM (SELESAI)' : 'BELUM DIKIRIM'}
+                                            </span>
+                                            {linkedDO && (
+                                              <span className="text-[9px] font-mono text-slate-500 mt-0.5">
+                                                {linkedDO.no_surat_jalan}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {!isShipped && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                flowPOtoDO(s);
+                                              }}
+                                              className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                              title="Langsung terbitkan Surat Jalan (DO) untuk pesanan ini"
+                                            >
+                                              <Truck className="w-3 h-3 text-emerald-300" />
+                                              <span>Kirim DO →</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    );
+                                  })()}
                                   {cols.aksiLanjutan === true && (
                                     <td className={`${densityClass} text-center space-x-1`}>
                                       <button
@@ -10110,6 +10164,17 @@ export default function EternalPackagingERPWorkspace() {
                       deliveryOrders.some(
                         (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
                       );
+                    const linkedInv = salesInvoices.find(
+                      (i) => i.pesanan_id === po.id || (i.catatan && po.no_pesanan && i.catatan.includes(po.no_pesanan))
+                    );
+                    const dp = Number(po.uang_muka || 0);
+                    const tot = Number(po.total || 0);
+                    const isPaid =
+                      po.status_bayar === 'LUNAS' ||
+                      (linkedInv &&
+                        (linkedInv.status === 'LUNAS' ||
+                          Number(linkedInv.bayar || 0) >= Number(linkedInv.total_akhir || 0))) ||
+                      (dp >= tot && tot > 0);
 
                     return (
                       <div
@@ -10127,13 +10192,37 @@ export default function EternalPackagingERPWorkspace() {
                               {po.no_pesanan}
                             </span>
                             <span
-                              className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                              className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
                                 isShipped
                                   ? 'bg-slate-100 text-slate-600 border-slate-300'
                                   : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                               }`}
                             >
-                              {isShipped ? 'SUDAH DIKIRIM (SELESAI)' : po.status || 'MENUNGGU_PENGIRIMAN'}
+                              {isShipped ? '📦 SUDAH DIKIRIM (SELESAI)' : '📦 BELUM DIKIRIM (SIAP KIRIM)'}
+                            </span>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
+                                linkedInv
+                                  ? 'bg-teal-50 text-teal-800 border-teal-300'
+                                  : 'bg-amber-50 text-amber-900 border-amber-300'
+                              }`}
+                            >
+                              {linkedInv ? `📄 FAKTUR: ${linkedInv.no_invoice}` : '📄 FAKTUR: BELUM DITAGIH'}
+                            </span>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
+                                isPaid
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : dp > 0
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : 'bg-slate-50 text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {isPaid
+                                ? '💰 BAYAR: LUNAS'
+                                : dp > 0
+                                ? `💰 DP: Rp ${dp.toLocaleString('id-ID')}`
+                                : '💰 BAYAR: BELUM BAYAR'}
                             </span>
                             <span className="text-[11px] text-slate-400 font-medium">
                               • Tanggal: {po.tanggal}
@@ -10434,14 +10523,17 @@ export default function EternalPackagingERPWorkspace() {
                               <span className="font-mono font-black text-xs text-emerald-950 group-hover:text-emerald-700">
                                 {doo.no_surat_jalan}
                               </span>
+                              <span className="text-[10px] px-2 py-0.5 font-bold rounded border bg-blue-50 text-blue-900 border-blue-200">
+                                📦 BARANG SUDAH KELUAR GUDANG
+                              </span>
                               <span
-                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
                                   isInvoiced
                                     ? 'bg-slate-100 text-slate-600 border-slate-300'
-                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : 'bg-amber-50 text-amber-900 border-amber-300'
                                 }`}
                               >
-                                {isInvoiced ? 'SUDAH DITAGIH (SELESAI)' : doo.status || 'TERKIRIM'}
+                                {isInvoiced ? '📄 SUDAH DIFAKTURKAN' : '📄 BELUM DITAGIH (SIAP FAKTUR)'}
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
                                 • Tanggal: {doo.tanggal}
@@ -10526,6 +10618,10 @@ export default function EternalPackagingERPWorkspace() {
                           (inv) => inv.pesanan_id === po.id || (inv.catatan && po.no_pesanan && inv.catatan.includes(po.no_pesanan))
                         ) ||
                         (po.status === 'SELESAI' && po.status_bayar === 'LUNAS');
+                      const linkedDO = deliveryOrders.find(
+                        (d) => d.pesanan_id === po.id || (d.catatan && po.no_pesanan && d.catatan.includes(po.no_pesanan))
+                      );
+                      const isShipped = po.status === 'SELESAI' || Boolean(linkedDO);
 
                       return (
                         <div
@@ -10543,13 +10639,22 @@ export default function EternalPackagingERPWorkspace() {
                                 {po.no_pesanan}
                               </span>
                               <span
-                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
                                   isInvoiced
                                     ? 'bg-slate-100 text-slate-600 border-slate-300'
-                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : 'bg-amber-50 text-amber-900 border-amber-300'
                                 }`}
                               >
-                                {isInvoiced ? 'SUDAH DITAGIH' : po.status || 'MENUNGGU_PENGIRIMAN'}
+                                {isInvoiced ? '📄 SUDAH DIFAKTURKAN' : '📄 BELUM DITAGIH (TAGIH DI AWAL)'}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
+                                  isShipped
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {isShipped ? `📦 SUDAH DIKIRIM (${linkedDO?.no_surat_jalan || 'DO'})` : '📦 BELUM DIKIRIM'}
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
                                 • Tanggal: {po.tanggal}

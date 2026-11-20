@@ -1955,6 +1955,12 @@ export default function PurchaseModule({
       const flt = advancedFilters.po_beli;
       const statusTerima = flt.statusTerima !== undefined && flt.statusTerima !== 'ALL' ? flt.statusTerima : flt.status;
       if (statusTerima === 'ALL') return true;
+      if (statusTerima === 'SUDAH_BAYAR_BELUM_TERIMA') {
+        const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id || p.pesanan_id === po.id || (p.catatan && po.no_pesanan && p.catatan.includes(po.no_pesanan)));
+        const isPaid = po.status_bayar === 'LUNAS' || Number(po.uang_muka || 0) > 0 || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) > 0));
+        const isReceived = po.status === 'SELESAI' || goodsReceipts.some((ri) => ri.pesanan_id === po.id || (ri.keterangan && po.no_pesanan && ri.keterangan.includes(po.no_pesanan)));
+        return isPaid && !isReceived;
+      }
       if (statusTerima === 'MENUNGGU_PENERIMAAN') return po.status !== 'SELESAI';
       if (statusTerima === 'SELESAI') return po.status === 'SELESAI';
       return true;
@@ -1962,7 +1968,7 @@ export default function PurchaseModule({
     .filter((po) => {
       const flt = advancedFilters.po_beli;
       if (!flt.statusBayar || flt.statusBayar === 'ALL') return true;
-      const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id);
+      const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id || p.pesanan_id === po.id || (p.catatan && po.no_pesanan && p.catatan.includes(po.no_pesanan)));
       const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
       if (flt.statusBayar === 'LUNAS') return isLunas;
       if (flt.statusBayar === 'BELUM_BAYAR') return !isLunas;
@@ -2463,51 +2469,83 @@ export default function PurchaseModule({
                                 </td>
                               )}
                               {cols.statusBayar !== false && (() => {
-                                const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id);
+                                const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id || p.pesanan_id === po.id || (p.catatan && po.no_pesanan && p.catatan.includes(po.no_pesanan)));
                                 const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
+                                const hasDP = !isLunas && (Number(po.uang_muka || 0) > 0 || (linkedFB && Number(linkedFB.bayar || 0) > 0));
                                 return (
                                   <td className={`${densityClass} text-center border-r border-slate-100/80`}>
                                     <span
                                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                                         isLunas
                                           ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                          : hasDP
+                                          ? 'bg-blue-50 text-blue-800 border-blue-300'
                                           : 'bg-slate-100 text-slate-600 border-slate-200'
                                       }`}
                                     >
-                                      {isLunas ? 'LUNAS' : 'BELUM BAYAR'}
+                                      {isLunas ? 'LUNAS' : hasDP ? 'DP TERBAYAR' : 'BELUM BAYAR'}
                                     </span>
                                   </td>
                                 );
                               })()}
-                              {(cols.statusTerima !== false || cols.status !== false) && (
-                                <td className={`${densityClass} text-center border-r border-slate-100/80`}>
-                                  <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
-                                    <span
-                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                        po.status === 'SELESAI'
-                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                          : 'bg-amber-50 text-amber-800 border-amber-300'
-                                      }`}
-                                    >
-                                      {po.status === 'SELESAI' ? 'SELESAI' : 'MENUNGGU PENERIMAAN'}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        await handleTakePOIntoRI(po);
-                                        handleSubTabSwitch('ri_beli');
-                                        switchViewMode('ri_beli', 'form');
-                                      }}
-                                      className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
-                                      title="Langsung catat Penerimaan Barang (RI) untuk pesanan ini"
-                                    >
-                                      <Truck className="w-3 h-3 text-emerald-300" />
-                                      <span>Terima RI →</span>
-                                    </button>
-                                  </div>
-                                </td>
-                              )}
+                              {(cols.statusTerima !== false || cols.status !== false) && (() => {
+                                const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id || p.pesanan_id === po.id || (p.catatan && po.no_pesanan && p.catatan.includes(po.no_pesanan)));
+                                const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
+                                const hasDP = !isLunas && (Number(po.uang_muka || 0) > 0 || (linkedFB && Number(linkedFB.bayar || 0) > 0));
+                                const isPaid = isLunas || hasDP;
+                                const linkedRI = goodsReceipts.find((ri) => ri.pesanan_id === po.id || (ri.keterangan && po.no_pesanan && ri.keterangan.includes(po.no_pesanan)));
+                                const isReceived = po.status === 'SELESAI' || !!linkedRI;
+
+                                return (
+                                  <td className={`${densityClass} text-center border-r border-slate-100/80`}>
+                                    <div className="flex flex-col items-center justify-center space-y-1">
+                                      <div className="flex items-center justify-center space-x-1.5 flex-wrap gap-y-1">
+                                        <span
+                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            isReceived
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                              : isPaid
+                                              ? 'bg-amber-50 text-amber-900 border-amber-300 font-bold'
+                                              : 'bg-slate-100 text-slate-700 border-slate-300'
+                                          }`}
+                                        >
+                                          {isReceived
+                                            ? 'SELESAI (DITERIMA)'
+                                            : isPaid
+                                            ? 'MENUNGGU KIRIMAN PABRIK'
+                                            : 'MENUNGGU PENERIMAAN'}
+                                        </span>
+                                        {!isReceived && (
+                                          <button
+                                            type="button"
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              await handleTakePOIntoRI(po);
+                                              handleSubTabSwitch('ri_beli');
+                                              switchViewMode('ri_beli', 'form');
+                                            }}
+                                            className="px-2 py-0.5 bg-[#07291D] hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95"
+                                            title="Langsung catat Penerimaan Barang (RI) untuk pesanan ini"
+                                          >
+                                            <Truck className="w-3 h-3 text-emerald-300" />
+                                            <span>Terima RI →</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                      {isPaid && !isReceived && (
+                                        <span className="text-[9px] font-medium text-amber-700">
+                                          (Uang Sudah Transfer • Barang Belum Tiba)
+                                        </span>
+                                      )}
+                                      {linkedRI && (
+                                        <span className="text-[9px] font-mono text-emerald-700">
+                                          via {linkedRI.no_terima}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })()}
                               {cols.aksiLanjutan === true && (
                                 <td className={`${densityClass} text-center space-x-1 whitespace-nowrap`}>
                                   <button
@@ -5114,6 +5152,9 @@ export default function PurchaseModule({
                         goodsReceipts.some(
                           (ri) => ri.pesanan_id === po.id || (ri.keterangan && po.no_pesanan && ri.keterangan.includes(po.no_pesanan))
                         );
+                      const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id || p.pesanan_id === po.id || (p.catatan && po.no_pesanan && p.catatan.includes(po.no_pesanan)));
+                      const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
+                      const hasDP = !isLunas && (Number(po.uang_muka || 0) > 0 || (linkedFB && Number(linkedFB.bayar || 0) > 0));
 
                       return (
                         <div
@@ -5131,13 +5172,26 @@ export default function PurchaseModule({
                                 {po.no_pesanan}
                               </span>
                               <span
-                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
                                   isReceived
                                     ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                    : isLunas || hasDP
+                                    ? 'bg-amber-100 text-amber-950 border-amber-300 font-black'
                                     : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                                 }`}
                               >
-                                {isReceived ? 'SUDAH DITERIMA (SELESAI)' : po.status || 'MENUNGGU_PENERIMAAN'}
+                                {isReceived ? '📦 FISIK: SUDAH DITERIMA' : isLunas || hasDP ? '📦 FISIK: MENUNGGU TIBA (Pabrik Belum Kirim)' : '📦 FISIK: BELUM DITERIMA'}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
+                                  isLunas
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : hasDP
+                                    ? 'bg-blue-50 text-blue-800 border-blue-300'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {isLunas ? '💰 BAYAR: LUNAS' : hasDP ? '💰 BAYAR: DP TERBAYAR' : '💰 BAYAR: BELUM BAYAR'}
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
                                 • Tanggal: {po.tanggal}
@@ -5251,16 +5305,19 @@ export default function PurchaseModule({
                                 {ri.no_terima}
                               </span>
                               <span
-                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
                                   isBilled
                                     ? 'bg-slate-100 text-slate-600 border-slate-300'
-                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : 'bg-amber-100 text-amber-900 border-amber-300'
                                 }`}
                               >
-                                {isBilled ? 'SUDAH DIFAKTURKAN (SELESAI)' : ri.status || 'DITERIMA'}
+                                {isBilled ? '📄 FAKTUR: SUDAH DIFAKTURKAN (SELESAI)' : '📄 FAKTUR: BELUM DIFAKTURKAN (SIAP FB)'}
+                              </span>
+                              <span className="text-[10px] px-2 py-0.5 font-bold rounded border bg-emerald-50 text-emerald-800 border-emerald-200">
+                                📦 SUDAH MASUK GUDANG
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
-                                • Tanggal: {ri.tanggal}
+                                • Tgl Terima: {ri.tanggal}
                               </span>
                             </div>
 
@@ -5345,6 +5402,13 @@ export default function PurchaseModule({
                         purchases.some(
                           (fb) => fb.pesanan_id === po.id || (fb.catatan && po.no_pesanan && fb.catatan.includes(po.no_pesanan))
                         );
+                      const linkedRI = goodsReceipts.find(
+                        (ri) => ri.pesanan_id === po.id || (ri.keterangan && po.no_pesanan && ri.keterangan.includes(po.no_pesanan))
+                      );
+                      const isReceived = po.status === 'SELESAI' || !!linkedRI;
+                      const linkedFB = purchases.find((p) => p.pesanan_pembelian_id === po.id || p.pesanan_id === po.id || (p.catatan && po.no_pesanan && p.catatan.includes(po.no_pesanan)));
+                      const isLunas = po.status_bayar === 'LUNAS' || (linkedFB && (linkedFB.status_bayar === 'LUNAS' || Number(linkedFB.bayar || 0) >= Number(linkedFB.total_akhir || linkedFB.total || 0))) || po.status === 'SELESAI';
+                      const hasDP = !isLunas && (Number(po.uang_muka || 0) > 0 || (linkedFB && Number(linkedFB.bayar || 0) > 0));
 
                       return (
                         <div
@@ -5362,13 +5426,33 @@ export default function PurchaseModule({
                                 {po.no_pesanan}
                               </span>
                               <span
-                                className={`text-[10px] px-2 py-0.2 font-bold rounded border ${
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
                                   isBilled
                                     ? 'bg-slate-100 text-slate-600 border-slate-300'
-                                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : 'bg-amber-100 text-amber-900 border-amber-300'
                                 }`}
                               >
-                                {isBilled ? 'SUDAH DIFAKTURKAN' : po.status || 'MENUNGGU_PENERIMAAN'}
+                                {isBilled ? '📄 FAKTUR: SUDAH DIFAKTURKAN (SELESAI)' : '📄 FAKTUR: BELUM DIFAKTURKAN (SIAP FB)'}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
+                                  isReceived
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {isReceived ? (linkedRI ? `📦 BARANG: SUDAH TIBA (${linkedRI.no_terima})` : '📦 BARANG: SUDAH DITERIMA') : '📦 BARANG: MENUNGGU TIBA'}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 font-bold rounded border ${
+                                  isLunas
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : hasDP
+                                    ? 'bg-blue-50 text-blue-800 border-blue-300'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {isLunas ? '💰 BAYAR: LUNAS' : hasDP ? '💰 BAYAR: DP TERBAYAR' : '💰 BAYAR: BELUM BAYAR'}
                               </span>
                               <span className="text-[11px] text-slate-400 font-medium">
                                 • Tanggal: {po.tanggal}

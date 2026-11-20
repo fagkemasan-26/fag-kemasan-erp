@@ -27,6 +27,7 @@ export const DEFAULT_TABLE_CONFIGS = {
     // 1. Filter bars yang aktif di toolbar
     activeFilters: {
       statusBayar: true,
+      statusFaktur: true,
       statusKirim: true,
       dateRange: true,
       customer: true,
@@ -35,6 +36,7 @@ export const DEFAULT_TABLE_CONFIGS = {
     // 2. Default dropdown value saat dibuka pertama kali
     defaultFilterValues: {
       statusBayar: 'ALL',
+      statusFaktur: 'ALL',
       statusKirim: 'ALL',
       dateRange: 'ALL',
       customer: 'ALL',
@@ -48,6 +50,7 @@ export const DEFAULT_TABLE_CONFIGS = {
       catatan: true,
       total: true,
       statusBayar: true,
+      statusFaktur: true,
       statusKirim: true,
       aksiLanjutan: false, // User requested: HILANGKAN AKSI KARENA SUDAH BISA KLIK BARIS
     },
@@ -516,6 +519,28 @@ export default function TableConfigModal({
                         className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
                       />
                     </label>
+
+                    <label className="apple-card-interactive p-3.5 flex items-center justify-between cursor-pointer">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center">
+                          <Tag className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-800 block text-xs">
+                            Filter Status Penagihan (Faktur SI)
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            Semua, Belum Ditagih, Sudah Terbit Faktur
+                          </span>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(localConfig.activeFilters?.statusFaktur)}
+                        onChange={() => handleToggleFilter('statusFaktur')}
+                        className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                      />
+                    </label>
                   </>
                 )}
 
@@ -799,6 +824,7 @@ export default function TableConfigModal({
                     nominal: 'Nominal Kas (Rp)',
                     sisaTagihan: 'Sisa Piutang (Rp)',
                     statusBayar: 'Status Pembayaran / DP / Pelunasan',
+                    statusFaktur: 'Status Penagihan / Faktur (SI)',
                     statusKirim: 'Status Pengiriman',
                     statusTerima: 'Status Penerimaan Barang',
                     status: 'Status Dokumen',

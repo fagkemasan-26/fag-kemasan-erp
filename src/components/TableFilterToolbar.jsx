@@ -55,6 +55,7 @@ export default function TableFilterToolbar({
   const isFilterActive =
     (searchQuery && searchQuery.trim() !== '') ||
     (filters.statusBayar && filters.statusBayar !== 'ALL') ||
+    (filters.statusFaktur && filters.statusFaktur !== 'ALL') ||
     (filters.statusKirim && filters.statusKirim !== 'ALL') ||
     (filters.statusTerima && filters.statusTerima !== 'ALL') ||
     (filters.status && filters.status !== 'ALL') ||
@@ -136,6 +137,25 @@ export default function TableFilterToolbar({
             </div>
           )}
 
+          {/* 2b. Filter Status Penagihan / Faktur (SO) */}
+          {activeFilters.statusFaktur && moduleType === 'so' && (
+            <div className="flex items-center space-x-1">
+              <select
+                value={filters.statusFaktur || 'ALL'}
+                onChange={(e) => onFilterChange('statusFaktur', e.target.value)}
+                className={`py-1.5 px-3 border rounded-xl text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-emerald-700/20 cursor-pointer ${
+                  filters.statusFaktur && filters.statusFaktur !== 'ALL'
+                    ? 'bg-teal-50 text-teal-950 border-teal-300 font-bold'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <option value="ALL">Status Faktur: Semua</option>
+                <option value="BELUM_DITAGIH">Belum Ditagih (Belum Ada SI)</option>
+                <option value="SUDAH_DITAGIH">Sudah Ditagih (Ada SI)</option>
+              </select>
+            </div>
+          )}
+
           {/* 3. Filter Status Pengiriman / Penerimaan */}
           {activeFilters.statusKirim && moduleType === 'so' && (
             <div className="flex items-center space-x-1">
@@ -170,8 +190,9 @@ export default function TableFilterToolbar({
                 }`}
               >
                 <option value="ALL">Status Terima: Semua</option>
-                <option value="MENUNGGU_PENERIMAAN">Menunggu Penerimaan</option>
-                <option value="SELESAI">Selesai / Diterima</option>
+                <option value="MENUNGGU_PENERIMAAN">Menunggu Penerimaan (Barang Belum Tiba)</option>
+                <option value="SUDAH_BAYAR_BELUM_TERIMA">Sudah Bayar, Belum Diterima (Outstanding)</option>
+                <option value="SELESAI">Selesai / Diterima di Gudang</option>
               </select>
             </div>
           )}
