@@ -304,6 +304,7 @@ export default function PurchaseModule({
             qty,
             harga_beli,
             subtotal,
+            catatan,
             produk:produk_id(id, kode_sku, nama, satuan, harga_beli, stok)
           )
         `)
@@ -342,6 +343,7 @@ export default function PurchaseModule({
             qty,
             harga_beli,
             subtotal,
+            catatan,
             produk:produk_id(id, kode_sku, nama, satuan, harga_beli, stok)
           )
         `)
@@ -596,6 +598,7 @@ export default function PurchaseModule({
         harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
         diskonRp: Number(d.diskon || 0),
         subtotal: Number(d.subtotal || (Number(d.qty) * Number(d.harga_beli))),
+        catatan: d.catatan || '',
       };
     });
     const sub = rawItems.reduce((acc, i) => acc + (Number(i.subtotal) || 0), 0);
@@ -703,6 +706,7 @@ export default function PurchaseModule({
         harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
         diskonRp: Number(d.diskon || 0),
         subtotal: Number(d.subtotal || (Number(d.qty) * Number(d.harga_beli))),
+        catatan: d.catatan || '',
       };
     });
     const sub = rawItems.reduce((acc, i) => acc + (Number(i.subtotal) || 0), 0);
@@ -1017,6 +1021,7 @@ export default function PurchaseModule({
           qty: Number(i.qty),
           harga_beli: Number(i.harga_beli),
           subtotal: Number(i.qty) * Number(i.harga_beli) - Number(i.diskonRp || 0),
+          catatan: i.catatan || null,
         }));
         await supabase.from('pesanan_pembelian_detail').insert(details);
         onToast?.(`Pesanan Pembelian ${docNo} berhasil diperbarui!`, 'success');
@@ -1050,6 +1055,7 @@ export default function PurchaseModule({
           qty: Number(i.qty),
           harga_beli: Number(i.harga_beli),
           subtotal: Number(i.qty) * Number(i.harga_beli) - Number(i.diskonRp || 0),
+          catatan: i.catatan || null,
         }));
         await supabase.from('pesanan_pembelian_detail').insert(details);
 
@@ -1304,6 +1310,7 @@ export default function PurchaseModule({
           qty: Number(i.qty),
           harga_beli: Number(i.harga_beli),
           subtotal: Number(i.qty) * Number(i.harga_beli) - Number(i.diskonRp || 0),
+          catatan: i.catatan || null,
         }));
         await supabase.from('pembelian_detail').insert(details);
 
@@ -1391,6 +1398,7 @@ export default function PurchaseModule({
         qty: Number(i.qty),
         harga_beli: Number(i.harga_beli),
         subtotal: Number(i.qty) * Number(i.harga_beli) - Number(i.diskonRp || 0),
+        catatan: i.catatan || null,
       }));
       await supabase.from('pembelian_detail').insert(details);
 
@@ -1776,6 +1784,7 @@ export default function PurchaseModule({
             harga_beli: Number(d.harga_beli || prod?.harga_beli || 0),
             diskonPersen: 0,
             diskonRp: 0,
+            catatan: d.catatan || '',
           };
         });
 
@@ -3595,6 +3604,7 @@ export default function PurchaseModule({
                                   id: piForm.editingId,
                                   no_faktur: piForm.invoiceNo,
                                   supplier: suppliers.find((s) => s.id === piForm.supplierId),
+                                  pembelian_detail: piForm.items.map((i) => ({ ...i, produk: i, subtotal: i.total })),
                                   faktur_pembelian_detail: piForm.items.map((i) => ({ ...i, produk: i, subtotal: i.total })),
                                 };
                                 if (inv) setPdfModalDoc({ type: 'FB', data: inv });
@@ -5679,12 +5689,18 @@ export default function PurchaseModule({
                       pdfModalDoc.data?.pesanan_pembelian_detail ||
                       pdfModalDoc.data?.penerimaan_barang_detail ||
                       pdfModalDoc.data?.pembelian_detail ||
+                      pdfModalDoc.data?.faktur_pembelian_detail ||
                       []
                     ).map((d, i) => (
                       <tr key={i}>
                         <td className="py-2 px-2.5 text-center font-mono border-r border-slate-200/80">{i + 1}</td>
                         <td className="py-2 px-2.5 font-semibold text-slate-900 border-r border-slate-200/80">
-                          {d.produk?.nama || '-'}
+                          <div>{d.produk?.nama || d.nama || '-'}</div>
+                          {(d.catatan || d.keterangan || d.note) && (
+                            <div className="text-[10px] text-slate-500 italic mt-0.5">
+                              Catatan: {d.catatan || d.keterangan || d.note}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-2.5 text-center font-mono font-bold border-r border-slate-200/80">{d.qty}</td>
                         <td className="py-2 px-2.5 text-center text-slate-600 border-r border-slate-200/80">

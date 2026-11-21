@@ -1150,6 +1150,7 @@ export default function EternalPackagingERPWorkspace() {
           qty: i.qty,
           harga_jual: i.harga_jual,
           subtotal: i.total || i.qty * i.harga_jual,
+          catatan: i.catatan || null,
         }));
         await supabase.from('pesanan_penjualan_detail').insert(details);
 
@@ -1195,6 +1196,7 @@ export default function EternalPackagingERPWorkspace() {
         qty: i.qty,
         harga_jual: i.harga_jual,
         subtotal: i.total || i.qty * i.harga_jual,
+        catatan: i.catatan || null,
       }));
       await supabase.from('pesanan_penjualan_detail').insert(details);
 
@@ -1244,6 +1246,7 @@ export default function EternalPackagingERPWorkspace() {
           produk_id: i.id,
           qty: i.qty,
           harga_jual: i.harga_jual,
+          catatan: i.catatan || '',
           produk: i,
         })),
       };
@@ -1280,6 +1283,7 @@ export default function EternalPackagingERPWorkspace() {
           qty: i.qty,
           harga_jual: i.harga_jual,
           subtotal: i.total || i.qty * i.harga_jual,
+          catatan: i.catatan || null,
         }));
         await supabase.from('penawaran_penjualan_detail').insert(details);
 
@@ -1312,6 +1316,7 @@ export default function EternalPackagingERPWorkspace() {
         qty: i.qty,
         harga_jual: i.harga_jual,
         subtotal: i.total || i.qty * i.harga_jual,
+        catatan: i.catatan || null,
       }));
       await supabase.from('penawaran_penjualan_detail').insert(details);
 
@@ -1354,6 +1359,7 @@ export default function EternalPackagingERPWorkspace() {
           pengiriman_id: doForm.editingId,
           produk_id: i.id,
           qty: i.qty,
+          catatan: i.catatan || null,
         }));
         await supabase.from('pengiriman_pesanan_detail').insert(details);
 
@@ -1396,6 +1402,7 @@ export default function EternalPackagingERPWorkspace() {
         pengiriman_id: doH.id,
         produk_id: i.id,
         qty: i.qty,
+        catatan: i.catatan || null,
       }));
       await supabase.from('pengiriman_pesanan_detail').insert(details);
 
@@ -1461,6 +1468,7 @@ export default function EternalPackagingERPWorkspace() {
         pengiriman_pesanan_detail: doForm.items.map((i) => ({
           produk_id: i.id,
           qty: i.qty,
+          catatan: i.catatan || '',
           produk: i,
         })),
       };
@@ -1510,6 +1518,7 @@ export default function EternalPackagingERPWorkspace() {
           harga_jual: i.harga_jual,
           hpp: i.harga_beli,
           subtotal: i.total || i.qty * i.harga_jual,
+          catatan: i.catatan || null,
         }));
         await supabase.from('penjualan_detail').insert(details);
 
@@ -1650,6 +1659,7 @@ export default function EternalPackagingERPWorkspace() {
         harga_jual: i.harga_jual,
         hpp: i.harga_beli,
         subtotal: i.total || i.qty * i.harga_jual,
+        catatan: i.catatan || null,
       }));
       await supabase.from('penjualan_detail').insert(details);
 
@@ -1820,6 +1830,7 @@ export default function EternalPackagingERPWorkspace() {
           produk_id: i.id,
           qty: i.qty,
           harga_jual: i.harga_jual,
+          catatan: i.catatan || '',
           produk: i,
         })),
       };
@@ -2357,6 +2368,7 @@ export default function EternalPackagingERPWorkspace() {
       harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
       diskonPersen: Number(d.diskon_persen || 0),
       total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
+      catatan: d.catatan || '',
     }));
     const sub = rawItems.reduce((acc, i) => acc + (Number(i.total) || 0), 0);
     const disc = Number(order.diskon || 0);
@@ -2417,6 +2429,7 @@ export default function EternalPackagingERPWorkspace() {
       harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
       diskonPersen: Number(d.diskon_persen || 0),
       total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
+      catatan: d.catatan || '',
     }));
     const sub = rawItems.reduce((acc, i) => acc + (Number(i.total) || 0), 0);
     const disc = Number(quote.diskon || 0);
@@ -2475,6 +2488,7 @@ export default function EternalPackagingERPWorkspace() {
         nama: d.produk?.nama || '',
         satuan: d.satuan || d.produk?.satuan || 'Pcs',
         qty: Number(d.qty || 0),
+        catatan: d.catatan || '',
       })),
       catatan: doItem.catatan || '',
       lampiran_url: doItem.lampiran_url || '',
@@ -2514,6 +2528,7 @@ export default function EternalPackagingERPWorkspace() {
       harga_beli: Number(d.hpp || d.produk?.harga_beli || 0),
       diskonPersen: Number(d.diskon_persen || 0),
       total: Number(d.subtotal || (d.qty * d.harga_jual) || 0),
+      catatan: d.catatan || '',
     }));
     const sub = rawItems.reduce((acc, i) => acc + (Number(i.total) || 0), 0);
     const disc = Number(invoice.diskon || 0);
@@ -2666,6 +2681,7 @@ export default function EternalPackagingERPWorkspace() {
           diskonPersen: Number(d.diskon_persen || 0),
           diskonRp: 0,
           total: Number(d.subtotal || 0),
+          catatan: d.catatan || '',
         })) || [],
     }));
     openTab('so', 'Pesanan Penjualan (PO)', 'so', 'form');
@@ -2690,6 +2706,7 @@ export default function EternalPackagingERPWorkspace() {
           nama: d.produk?.nama || products.find((p) => p.id === d.produk_id)?.nama || '',
           satuan: d.satuan || d.produk?.satuan || products.find((p) => p.id === d.produk_id)?.satuan || 'Pcs',
           qty: d.qty || 1,
+          catatan: d.catatan || '',
         })) || [],
     }));
     openTab('do', 'Pengiriman (DO)', 'do', 'form');
@@ -2734,6 +2751,7 @@ export default function EternalPackagingERPWorkspace() {
             diskonPersen: Number(d.diskon_persen || 0),
             diskonRp: 0,
             total: Number(d.subtotal || qty * hj),
+            catatan: d.catatan || '',
           };
         }) || [],
     }));
@@ -2774,6 +2792,7 @@ export default function EternalPackagingERPWorkspace() {
             harga_beli: Number(prod?.harga_beli || 0),
             diskonPersen: 0,
             total: qty * hj,
+            catatan: d.catatan || '',
           };
         }) || [],
     }));
@@ -4504,6 +4523,7 @@ export default function EternalPackagingERPWorkspace() {
                                         qty: i.qty,
                                         harga_jual: i.harga_jual,
                                         subtotal: i.total || i.qty * i.harga_jual,
+                                        catatan: i.catatan || '',
                                         produk: { kode_sku: i.kode_sku, nama: i.nama, satuan: i.satuan, harga_beli: i.harga_beli },
                                       })),
                                     };
@@ -4535,6 +4555,7 @@ export default function EternalPackagingERPWorkspace() {
                                         qty: i.qty,
                                         harga_jual: i.harga_jual,
                                         subtotal: i.total || i.qty * i.harga_jual,
+                                        catatan: i.catatan || '',
                                         produk: { kode_sku: i.kode_sku, nama: i.nama, satuan: i.satuan },
                                       })),
                                       total: q?.total || calculateTotals(quoteForm.items, quoteForm.discountAmount, quoteForm.ppnActive).grandTotal,

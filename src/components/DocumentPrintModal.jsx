@@ -854,8 +854,8 @@ export default function DocumentPrintModal({
                               </td>
                               <td className="py-2 px-2.5 border-r border-slate-100">
                                 <span className="font-bold text-slate-900">{it.nama || it.produk?.nama}</span>
-                                {it.catatan && (
-                                  <p className="text-[10px] text-slate-500 italic mt-0.5">Catatan: {it.catatan}</p>
+                                {(it.catatan || it.keterangan || it.note) && (
+                                  <p className="text-[10px] text-slate-500 italic mt-0.5">Catatan: {it.catatan || it.keterangan || it.note}</p>
                                 )}
                               </td>
                               <td className="py-2 px-2.5 text-center font-bold font-mono border-r border-slate-100">
