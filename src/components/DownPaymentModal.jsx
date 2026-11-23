@@ -395,9 +395,10 @@ export default function DownPaymentModal({
                     <option value="">-- Pilih No. Pesanan (PO) --</option>
                     {customerPOs.map((po) => {
                       const sisa = Math.max(0, Number(po.total || 0) - Number(po.uang_muka || 0));
+                      const isLunas = po.status_bayar === 'LUNAS' || sisa <= 0;
                       return (
                         <option key={po.id} value={po.id}>
-                          {po.no_pesanan} • Sisa: Rp {sisa.toLocaleString('id-ID')}
+                          {po.no_pesanan} • {isLunas ? 'SUDAH LUNAS' : `Sisa: Rp ${sisa.toLocaleString('id-ID')}`}
                         </option>
                       );
                     })}
@@ -418,9 +419,10 @@ export default function DownPaymentModal({
                     <option value="">-- Pilih Invoice --</option>
                     {customerInvoices.map((inv) => {
                       const sisa = Math.max(0, Number(inv.total_akhir || 0) - Number(inv.bayar || 0));
+                      const isLunas = inv.status === 'LUNAS' || sisa <= 0;
                       return (
                         <option key={inv.id} value={inv.id}>
-                          {inv.no_invoice} • Piutang: Rp {sisa.toLocaleString('id-ID')}
+                          {inv.no_invoice} • {isLunas ? 'SUDAH LUNAS' : `Piutang: Rp ${sisa.toLocaleString('id-ID')}`}
                         </option>
                       );
                     })}

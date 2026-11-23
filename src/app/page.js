@@ -2121,7 +2121,7 @@ export default function EternalPackagingERPWorkspace() {
         const currentInvoice = salesInvoices.find((i) => i.id === invoiceId);
         const newBayar = Number(currentInvoice?.bayar || 0) + Number(amount);
         const totalInv = Number(currentInvoice?.total_akhir || 0);
-        const statusInv = newBayar >= totalInv ? 'LUNAS' : 'BELUM_LUNAS';
+        const statusInv = newBayar >= totalInv ? 'LUNAS' : 'PIUTANG';
 
         const { error: siUpdErr } = await supabase
           .from('penjualan')
@@ -2233,7 +2233,7 @@ export default function EternalPackagingERPWorkspace() {
         const inv = salesInvoices.find((i) => i.id === fakturId);
         if (inv) {
           const newBayar = Math.max(0, Number(inv.bayar || 0) - Number(amount || 0));
-          const statusInv = newBayar >= inv.total_akhir ? 'LUNAS' : 'BELUM_LUNAS';
+          const statusInv = newBayar >= inv.total_akhir ? 'LUNAS' : 'PIUTANG';
           await supabase
             .from('penjualan')
             .update({
